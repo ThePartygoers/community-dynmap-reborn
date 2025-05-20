@@ -28,6 +28,8 @@ class WorldMap {
         this.stats = {
             tiles_rendered: 0
         }
+
+        this.debug = true
     }
 
     async load_map(id) {
@@ -36,8 +38,6 @@ class WorldMap {
 
         const root_path = `static/${id}`
         const depth = this.config.depth
-
-
 
         for (let lod = this.config.lod - 1; lod > -1; lod--) {
             let promises = []
@@ -68,7 +68,12 @@ class WorldMap {
         this.registerEvents()
 
         const debug_container = new PIXI.Container()
-        debug_container.zIndex = 1
+        debug_container.visible = false
+        debug_container.zIndex = 10
+
+        this.grid = new PIXI.Graphics()
+        this.grid.alpha = 1
+        this.grid.zIndex = 1
 
         let debug_lines = [
             () => `[DEBUG] Community Dynmap Reborn ${WorldMap.VERSION}`,
@@ -77,31 +82,36 @@ class WorldMap {
             () => `POS: ${Math.round(this.state.x)} ${Math.round(this.state.z)} ZOOM: ${this.state.zoom.toFixed(1)}`,
             () => `LOD: ${this._derived_lod} SF: ${Math.floor(this._derived_zoom * 100) / 100}`,
             () => `CHILDREN: ${Object.keys(this.children_cache).length}`,
-            () => `LOADED: ${Object.keys(this.textures).length}/844`
+            () => `LOADED: ${Object.keys(this.textures).length}/844`,
+            () => `GRID: S ${this.getGridSpacing()}`
         ]
 
-        let yHeight = 10;
-        debug_lines = debug_lines.map(line => {
-            const debug_text = new PIXI.BitmapText({
-                text: line(),
-                style: {
-                    fontFamily: 'round_6x6',
-                    fontSize: 20,
-                    align: 'left',
+        if (this.debug) {
+            let yHeight = 10;
+            debug_lines = debug_lines.map(line => {
+                const debug_text = new PIXI.BitmapText({
+                    text: line(),
+                    style: {
+                        fontFamily: 'round_6x6',
+                        fontSize: 20,
+                        align: 'left',
+                    }
+                });
+
+                debug_text.y = yHeight;
+                debug_container.addChild(debug_text)
+
+                yHeight += 22;
+
+                return () => {
+                    debug_text.text = line()
                 }
-            });
-
-            debug_text.y = yHeight;
-            debug_container.addChild(debug_text)
-
-            yHeight += 22;
-
-            return () => {
-                debug_text.text = line()
-            }
-        })
+            })
+            debug_container.visible = true
+        }
         
         this.app.stage.addChild(this.map_root)
+        this.app.stage.addChild(this.grid)
         this.app.stage.addChild(debug_container)
         
         this.app.ticker.add((ticker) => {
@@ -145,8 +155,8 @@ class WorldMap {
                     const global_tile_x = tileOrigin[0] + local_tile_x
                     const global_tile_z = tileOrigin[1] + local_tile_z
 
-                    if (Math.abs(global_tile_x) > this.config.depth) continue
-                    if (Math.abs(global_tile_z) > this.config.depth) continue
+                    if (Math.abs(global_tile_x) > this.config.depth / Math.pow(2, lod)) continue
+                    if (Math.abs(global_tile_z) > this.config.depth / Math.pow(2, lod)) continue
 
                     tiles++
                 }
@@ -175,8 +185,8 @@ class WorldMap {
                     const global_tile_x = tileOrigin[0] + local_tile_x
                     const global_tile_z = tileOrigin[1] + local_tile_z
 
-                    if (Math.abs(global_tile_x) > this.config.depth) continue
-                    if (Math.abs(global_tile_z) > this.config.depth) continue
+                    if (Math.abs(global_tile_x) > this.config.depth / Math.pow(2, lod)) continue
+                    if (Math.abs(global_tile_z) > this.config.depth / Math.pow(2, lod)) continue
 
                     const sprite = sprites.pop()
 
@@ -226,6 +236,42 @@ class WorldMap {
                     }
                 }
             }
+        }
+
+        const grid_spacing = this.getGridSpacing()
+
+        this.grid.clear()
+        if (grid_spacing) {
+            let grid_world_origin = this.toWorldSpace([0, 0])
+
+            grid_world_origin[0] = Math.floor(grid_world_origin[0] / grid_spacing) * grid_spacing
+            grid_world_origin[1] = Math.floor(grid_world_origin[1] / grid_spacing) * grid_spacing
+
+            const grid_screen_origin = this.toScreenSpace(grid_world_origin)
+
+            const grid_pixel_size = grid_spacing * this._derived_zoom
+            const linesAcrossWidth = screenWidth / grid_pixel_size + 1
+            const linesAcrossHeight = screenWidth / grid_pixel_size + 1
+
+            for (let column = 0; column < linesAcrossWidth; column++) {
+                this.grid.moveTo(grid_screen_origin[0] + column * grid_pixel_size, 0).lineTo(grid_screen_origin[0] + column * grid_pixel_size, screenHeight)
+                
+            }
+            this.grid.stroke({ color: 0xffffff, pixelLine: true });
+
+            for (let row = 0; row < linesAcrossHeight; row++) {
+                this.grid.moveTo(0, grid_screen_origin[1] + row * grid_pixel_size).lineTo(screenWidth, grid_screen_origin[1] + row * grid_pixel_size)
+                
+            }
+            this.grid.stroke({ color: 0xffffff, pixelLine: true });
+        }
+    }
+
+    getGridSpacing() {
+        if (this.state.zoom >= 30) {
+            return 1
+        } else if (this.state.zoom >= 10) {
+            return 16
         }
     }
 
@@ -351,8 +397,8 @@ class WorldMap {
         const halfHeight = this.app.renderer.screen.height / 2;
 
         return [
-            (wx - this.state.x - halfWidth) * this._derived_zoom + halfWidth,
-            (wz - this.state.z - halfHeight) * this._derived_zoom + halfHeight
+            (wx - this.state.x) * this._derived_zoom + halfWidth,
+            (wz - this.state.z ) * this._derived_zoom + halfHeight
         ];
     }
 
@@ -360,8 +406,8 @@ class WorldMap {
         const halfWidth = this.app.renderer.screen.width / 2;
         const halfHeight = this.app.renderer.screen.height / 2;
         return [
-            (sx - halfWidth) / this._derived_zoom + this.state.x + halfWidth,
-            (sy - halfHeight) / this._derived_zoom + this.state.z + halfHeight
+            (sx - halfWidth) / this._derived_zoom + this.state.x,
+            (sy - halfHeight) / this._derived_zoom + this.state.z
         ];
     }
 }
