@@ -62,6 +62,7 @@ class Map  {
 
         let debug_lines = [
             () => `[DEBUG] Community Dynmap Reborn ${Map.VERSION}`,
+            () => `FPS: ${this.app.ticker.FPS.toFixed(1)} (VSYNC)`,
             () => `T: ${this.stats.tiles_rendered} P: ${this.sprite_pool.length}`,
             () => `POS: ${Math.round(this.state.x)} ${Math.round(this.state.z)} ZOOM: ${this.state.zoom}`,
             () => `LOD: ${this._derived_lod} SF: ${Math.floor(this._derived_zoom * 100) / 100}`,
@@ -147,7 +148,6 @@ class Map  {
         const sprites = this.allocateSprites(tiles)
 
         for (let lod = this.config.lod - 1; lod >= this._derived_lod; lod--) {
-            console.log(lod)
             const tileOrigin = this.toWorldSpace([0, 0])
 
             const sizeOfTileBlocks = this.config.tile_size * Math.pow(2, lod)
