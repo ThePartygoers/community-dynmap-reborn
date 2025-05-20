@@ -1,4 +1,4 @@
-class Map  {
+class WorldMap {
 
     static VERSION = "v0.1.0"
 
@@ -31,23 +31,28 @@ class Map  {
     }
 
     async load_map(id) {
+        this.children_cache = {}
+        this.textures = {}
+
         const root_path = `static/${id}`
         const depth = this.config.depth
 
+
+
         for (let lod = this.config.lod - 1; lod > -1; lod--) {
-
+            let promises = []
             let relative_depth = depth / Math.pow(2, lod)
-
-            console.log(relative_depth)
 
             for (let x = -relative_depth; x <= relative_depth; x++) {
                 for (let z = -relative_depth; z <= relative_depth; z++) {
-                    await PIXI.Assets.load(`${root_path}/${lod}/${z}/${x}.png`).then(texture => {
+                    promises.push(PIXI.Assets.load(`${root_path}/${lod}/${z}/${x}.png`).then(texture => {
                         this.textures[`${lod}/${x}/${z}`] = texture
-                    }).catch(() => {})
+                    }).catch(() => {}))
                 }
             }
+            await Promise.all(promises)
         }
+
     }
 
     async init() {
@@ -66,10 +71,10 @@ class Map  {
         debug_container.zIndex = 1
 
         let debug_lines = [
-            () => `[DEBUG] Community Dynmap Reborn ${Map.VERSION}`,
+            () => `[DEBUG] Community Dynmap Reborn ${WorldMap.VERSION}`,
             () => `FPS: ${this.app.ticker.FPS.toFixed(1)} (VSYNC)`,
             () => `T: ${this.stats.tiles_rendered} P: ${this.sprite_pool.length}`,
-            () => `POS: ${Math.round(this.state.x)} ${Math.round(this.state.z)} ZOOM: ${this.state.zoom}`,
+            () => `POS: ${Math.round(this.state.x)} ${Math.round(this.state.z)} ZOOM: ${this.state.zoom.toFixed(1)}`,
             () => `LOD: ${this._derived_lod} SF: ${Math.floor(this._derived_zoom * 100) / 100}`,
             () => `CHILDREN: ${Object.keys(this.children_cache).length}`,
             () => `LOADED: ${Object.keys(this.textures).length}/844`
@@ -227,22 +232,22 @@ class Map  {
     registerEvents() {
         let mouseStartX = 0
         let mouseStartY = 0
-        let held = false
+        let dragging = false
 
         let mapStartX = 0
         let mapStartY = 0
 
-        window.addEventListener("pointerdown", event => {
+        window.addEventListener("mousedown", event => {
             mouseStartX = event.x
             mouseStartY = event.y
-            held = true
+            dragging = true
 
             mapStartX = this.state.x
             mapStartY = this.state.z
         })
 
-        window.addEventListener("pointermove", event => {
-            if (held) {
+        window.addEventListener("mousemove", event => {
+            if (dragging) {
                 const delta_x = (mouseStartX - event.x) / this._derived_zoom
                 const delta_y = (mouseStartY - event.y) / this._derived_zoom
 
@@ -251,13 +256,65 @@ class Map  {
             }
         })
 
-        window.addEventListener("pointerup", event => {
-            held = false
+        window.addEventListener("mouseup", event => {
+            dragging = false
         })
 
         window.addEventListener("wheel", event => {
             this.state.zoom += -event.deltaY / 100
         })
+
+        let zooming = false
+        let initial_zoom = 0
+        let initial_touch_delta = 0
+        window.addEventListener("touchstart", event => {
+            if (event.touches.length == 2) {
+                zooming = true
+                initial_zoom = this.state.zoom
+
+                const dx = event.touches[0].screenX - event.touches[1].screenX
+                const dy = event.touches[0].screenY - event.touches[1].screenY
+
+                initial_touch_delta = Math.sqrt(
+                    dx * dx + dy * dy
+                )
+            }
+
+            mouseStartX = event.touches[0].screenX
+            mouseStartY = event.touches[0].screenY
+            dragging = true
+
+            mapStartX = this.state.x
+            mapStartY = this.state.z
+        })
+
+        window.addEventListener("touchmove", event => {
+            if (zooming && event.touches.length == 2) {
+                const dx = event.touches[0].screenX - event.touches[1].screenX
+                const dy = event.touches[0].screenY - event.touches[1].screenY
+
+                const touch_delta = Math.sqrt(
+                    dx * dx + dy * dy
+                )
+
+                const delta = initial_touch_delta - touch_delta
+
+                this.state.zoom = initial_zoom - delta * 0.1
+            }
+
+            if (dragging) {
+                const delta_x = (mouseStartX - event.touches[0].screenX) / this._derived_zoom
+                const delta_y = (mouseStartY - event.touches[0].screenY) / this._derived_zoom
+
+                this.state.x = mapStartX + delta_x
+                this.state.z = mapStartY + delta_y
+            }
+		})
+
+        window.addEventListener("touchend", event => {
+            zooming = false
+            dragging = false
+		})
     }
 
     allocateSprites(count) {
@@ -314,12 +371,14 @@ class Map  {
 PIXI.TextureSource.defaultOptions.scaleMode = 'nearest';
 PIXI.AbstractRenderer.defaultOptions.roundPixels = true;
 
-Map.instance = new Map({
+window.WorldMap = WorldMap
+
+WorldMap.instance = new WorldMap({
     tile_size: 1024,
     depth: 12,
     lod: 3,
     max_sprites: 200
 })
-await Map.instance.init()
-globalThis.__PIXI_APP__ = Map.instance.app
+await WorldMap.instance.init()
+globalThis.__PIXI_APP__ = WorldMap.instance.app
 
