@@ -34,9 +34,14 @@ class Map  {
         const root_path = `static/${id}`
         const depth = this.config.depth
 
-        for (let lod = this.config.lod - 1; lod >= -1; lod--) {
-            for (let x = -depth; x <= depth; x++) {
-                for (let z = -depth; z <= depth; z++) {
+        for (let lod = this.config.lod - 1; lod > -1; lod--) {
+
+            let relative_depth = depth / Math.pow(2, lod)
+
+            console.log(relative_depth)
+
+            for (let x = -relative_depth; x <= relative_depth; x++) {
+                for (let z = -relative_depth; z <= relative_depth; z++) {
                     await PIXI.Assets.load(`${root_path}/${lod}/${z}/${x}.png`).then(texture => {
                         this.textures[`${lod}/${x}/${z}`] = texture
                     }).catch(() => {})
