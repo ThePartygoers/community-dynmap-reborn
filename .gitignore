@@ -1,0 +1,6 @@
+/.venv
+/node_modules
+/dump
+/debug
+
+# /src/static # no dynamic builds yet

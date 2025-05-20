@@ -1,0 +1,13 @@
+{
+  "name": "stoneworks_dynmap_reborn",
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "http-server -p 5555 -c-1 ./src"
+  },
+  "author": "",
+  "license": "MIT",
+  "description": "",
+  "devDependencies": {
+    "http-server": "^14.1.1"
+  }
+}
