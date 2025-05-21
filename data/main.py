@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import numpy as np
+import time
 import sys
 import math
 
@@ -178,8 +179,6 @@ def main():
             id: doparse(x) for id, x in data["me.angeschossen.lands"]["markers"].items()
         }))
 
-    exit(0)
-
     # Download tiles
     try:
         with concurrent.futures.ThreadPoolExecutor(max_workers=DL_WORKERS) as executor:
@@ -260,4 +259,7 @@ def main():
     shm_light.unlink()
 
 if __name__ == "__main__":
+    start = time.time()
     main()
+    dt = time.time() - start
+    print(f"Took {dt} secconds" )
