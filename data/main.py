@@ -1,6 +1,7 @@
 import concurrent.futures
 import requests
 import hashlib
+import json
 import os
 import numpy as np
 import sys
@@ -41,6 +42,16 @@ tile = lambda base, lod, x, z: base + f"tiles/{lod}/x{x}/z{z}.png"
 canvas_shape = (SEARCH_RADIUS * 2 * ROOT_TILE_SIZE, SEARCH_RADIUS * 2 * ROOT_TILE_SIZE, 4)
 map_clr = np.zeros(canvas_shape, dtype=np.uint8)
 map_alpha = np.zeros(canvas_shape, dtype=np.uint8)
+
+def merge(source, destination):
+    for key, value in source.items():
+        if isinstance(value, dict):
+            node = destination.setdefault(key, {})
+            merge(value, node)
+        else:
+            destination[key] = value
+
+    return destination
 
 def dl(remote, x, y):
     try:
@@ -117,7 +128,7 @@ def generate_lod_tile_shared(x, z, name, lod, source_size, useful_radius, world_
 
     x_world = (x - useful_radius) // source_size
     z_world = (z - useful_radius) // source_size
-    out_path = f"{OUTPUT}/{name}/{lod}/{x_world}"
+    out_path = f"{OUTPUT}/maps/{name}/{lod}/{x_world}"
     os.makedirs(out_path, exist_ok=True)
     image.save(f"{out_path}/{z_world}.png")
 
@@ -128,6 +139,46 @@ def main():
     if not os.path.exists("src"):
         print("You must run this from project root")
         exit(1)
+
+
+    data = {}
+
+    def process_markers(server):
+        url = server + "live/markers.json?0"
+
+        response = requests.get(url)
+
+        if response.status_code == 200:
+            return response.json()
+
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(SERVERS)) as executor:
+            futures = [
+                executor.submit(process_markers, server)
+                for server in SERVERS
+            ]
+            for f in tqdm(concurrent.futures.as_completed(futures), total=len(futures), desc="Downloading Markers"):
+                data = merge(data, f.result())
+
+    except KeyboardInterrupt:
+        executor.shutdown()
+        raise
+
+    def doparse(land):
+        return {
+            "shape": land["shape"],
+            "lineColor": land["lineColor"],
+            "fillColor": land["fillColor"],
+            "label": land["label"],
+            "position": land["position"]
+        }
+
+    with open(OUTPUT + "/" + "markers.json", "w") as fh:
+        fh.write(json.dumps({
+            id: doparse(x) for id, x in data["me.angeschossen.lands"]["markers"].items()
+        }))
+
+    exit(0)
 
     # Download tiles
     try:
