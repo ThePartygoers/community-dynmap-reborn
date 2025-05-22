@@ -3,4 +3,6 @@
 /dump
 /debug
 
+.env
+
 # /src/static # no dynamic builds yet

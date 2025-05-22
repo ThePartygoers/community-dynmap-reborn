@@ -3,6 +3,13 @@ const z_input = document.getElementById("ui_z")
 const search_span = document.getElementById("search_span")
 const search_results = document.getElementById("search_results")
 
+const claim_panel = document.getElementById("claim_panel")
+const claim_panel_name = document.getElementById("claim_name")
+const claim_panel_owner = document.getElementById("claim_owner")
+const claim_panel_balance = document.getElementById("claim_balance")
+const claim_panel_flag = document.getElementById("claim_flag")
+const claim_panel_owner_model = document.getElementById("claim_owner_model")
+
 function lerp(a, b, alpha) {
     return a + (b - a) * alpha
 }
@@ -77,6 +84,7 @@ class WorldMap {
         }
 
         this.hovered_claim = undefined
+        this.focused_claim = undefined
 
         this.debug = true
     }
@@ -431,7 +439,7 @@ class WorldMap {
             for (const [id, bounds] of Object.entries(renderable)) {
                 let graphics = this.claim_graphics[id]
 
-                let shouldRedraw = this.hovered_claim == id || this.force_claim_redraw
+                let shouldRedraw = this.hovered_claim == id || this.focused_claim == id || this.force_claim_redraw
 
                 if (graphics == undefined) {
                     graphics = new PIXI.Graphics()
@@ -512,6 +520,10 @@ class WorldMap {
                         clr = 0x11CCCC
                         blend = "divide"
                     }
+
+                    if (this.focused_claim == id) {
+                        clr = 0xFF7700
+                    }
                 
                     graphics.clear()
                     graphics.path(path)
@@ -559,6 +571,12 @@ class WorldMap {
         return ((r & 0xff) << 16) | ((g & 0xff) << 8) | (b & 0xff)
     }
 
+    teleport(state) {
+        this.state = state
+        this.lazy_update = false
+        this.force_claim_redraw = true
+    }
+
     getGridSpacing() {
         if (this.state.zoom >= 30) {
             return 1
@@ -568,7 +586,29 @@ class WorldMap {
     }
 
     setFocusedClaim(id) {
+        this.focused_claim = id
 
+        if (id && this.claims[id]) {
+            const claim = this.claims[id]
+
+            claim_panel_name.innerHTML = claim.name
+            claim_panel_owner.innerHTML = `Owned by ${claim.players[0]}`
+            claim_panel_balance.innerHTML = `: $${claim.balance}`
+
+            claim_panel_flag.src = "flag_temp.png"
+            claim_panel_owner_model.src = `https://mc-heads.net/body/${claim.players[0]}/left`
+
+            claim_panel.style.display = ""
+
+            this.teleport({
+                x: claim.position.x,
+                z: claim.position.z,
+                zoom: 1
+            })
+
+        } else {
+            claim_panel.style.display = "none"
+        }
     }
 
     registerEvents() {
@@ -610,12 +650,13 @@ class WorldMap {
 
         search_span.addEventListener('keydown', (e) => {
             if (e.key == 'Enter') {
+                e.preventDefault()
+                search_span.innerText = ""
 
                 if (this.last_search.length > 0) {
-                    this.setFocusedClaim(last_search[this.last_search.length - 1])
+                    this.setFocusedClaim(this.last_search[this.last_search.length - 1])
                 }
-                
-                e.preventDefault()
+            
             }
 
             if (e.key == "Escape") {
@@ -634,6 +675,12 @@ class WorldMap {
             this.pointer.x = event.clientX
             this.pointer.y = event.clientY
             this.pointer.hasMoved = true
+        })
+
+        window.addEventListener("pointerdown", event => {
+            if (this.hovered_claim) {
+                this.setFocusedClaim(this.hovered_claim)
+            }
         })
 
         document.addEventListener("mouseenter", event => {
@@ -769,7 +816,7 @@ class WorldMap {
         const claims = []
 
         for (const [id, claim] of Object.entries(this.claims)) {
-            const match = this.pullMatchingSubstring(claim.label, text)
+            const match = this.pullMatchingSubstring(claim.name, text)
 
             if (match !== false) {
                 const parent = document.createElement("span")

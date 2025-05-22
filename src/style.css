@@ -148,18 +148,18 @@ textarea:focus, input:focus{
     color: var(--color-premiere-accent2)
 }
 
-.claim {
+#claim_panel {
     border: 1px solid rgba(58, 58, 58, 0.6);
     background: linear-gradient(135deg, rgba(26, 26, 26, 0.95), rgba(35, 35, 35, 0.85));
 }
 
-.claim > table {
+#claim_panel > table {
     width: 100%;
     text-align: center;
     border-collapse: collapse;
 }
 
-.claim > table th {
+#claim_panel > table th {
     background: linear-gradient(135deg, rgba(15, 15, 15, 0.9), rgba(26, 26, 26, 0.8));
     color: var(--color-premiere-accent);
     font-weight: 600;
@@ -170,13 +170,13 @@ textarea:focus, input:focus{
     letter-spacing: 0.5px;
 }
 
-.claim > table td {
+#claim_panel > table td {
     padding: var(--spacing-sm);
     border-bottom: 1px solid rgba(58, 58, 58, 0.3);
     color: var(--color-premiere-text-dim);
 }
 
-.claim > table tr:hover {
+#claim_panel > table tr:hover {
     background: rgba(92, 141, 246, 0.1);
     transition: background 0.2s ease;
 }
@@ -230,11 +230,6 @@ textarea:focus, input:focus{
     max-height: calc(100% - var(--spacing-sm) * 2); /* we do a little trolling */
     filter: drop-shadow(2px 2px 2px #000);
     margin: var(--spacing-sm);
-
-    -webkit-transform: scale(-1, 1);
-    -moz-transform: scale(-1, -1);
-    -o-transform: scale(-1, 1);
-    transform: scale(-1, 1);
 }
 
 .nationheader > div {

@@ -1,12 +1,16 @@
 import concurrent.futures
 import requests
 import hashlib
+import pymongo
+import dotenv
 import json
 import os
 import numpy as np
 import time
 import sys
 import math
+
+dotenv.load_dotenv()
 
 from multiprocessing import shared_memory
 from PIL import Image, UnidentifiedImageError
@@ -19,6 +23,9 @@ SEARCH_RADIUS = 25
 ROOT_TILE_SIZE = 500
 TARGET_TILE_SIZE = 1024
 LEVELS_OF_DETAIL = 3
+
+MONGO_DB = "sauron"
+MONGO_COLLECTION = "lands"
 
 OUTPUT = "./src/static"
 
@@ -142,6 +149,8 @@ def main():
         exit(1)
 
 
+    mongodb = pymongo.MongoClient(os.environ["MDB"])[MONGO_DB][MONGO_COLLECTION]
+
     data = {}
 
     def process_markers(server):
@@ -165,19 +174,27 @@ def main():
         executor.shutdown()
         raise
 
-    def doparse(land):
-        return {
-            "shape": land["shape"],
-            "lineColor": land["lineColor"],
-            "fillColor": land["fillColor"],
-            "label": land["label"],
-            "position": land["position"]
-        }
+    data = { v["label"]:v for _,v in data["me.angeschossen.lands"]["markers"].items() }
 
-    with open(OUTPUT + "/" + "markers.json", "w") as fh:
-        fh.write(json.dumps({
-            id: doparse(x) for id, x in data["me.angeschossen.lands"]["markers"].items()
-        }))
+    cursor = mongodb.find({
+        "name": { "$in": [x["label"] for x in data.values()] }
+    })
+
+    final_output = {}
+    for document in tqdm(cursor, desc="Reading MongoDB"):
+        id = str(document["_id"])
+
+        document["shape"] = data[document["name"]]["shape"]
+        document["fillColor"] = data[document["name"]]["fillColor"]
+
+        del document["_id"]
+
+        final_output[id] = document
+
+    with open(OUTPUT + "/" + "claims.json", "w") as fh:
+        fh.write(json.dumps(final_output))
+
+    exit(0)
 
     # Download tiles
     try:
