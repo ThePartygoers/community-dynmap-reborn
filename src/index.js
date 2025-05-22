@@ -597,7 +597,7 @@ class WorldMap {
             claim_panel_owner.innerHTML = `Owned by ${claim.players[0]}`
             claim_panel_balance.innerHTML = `: $${claim.balance}`
 
-            claim_panel_flag.src = "flag_temp.png"
+            claim_panel_flag.src = "assets/flag_temp.png"
             claim_panel_owner_model.src = `https://mc-heads.net/body/${claim.players[0]}/left`
 
             claim_panel.style.display = ""
