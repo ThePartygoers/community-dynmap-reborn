@@ -67,8 +67,24 @@ textarea:focus, input:focus{
 
 .panel {
     color: var(--color-premiere-text);
-    background-color: var(--color-premiere-bg);
-    border: var(--color-premiere-border) 1px solid;
+    background: linear-gradient(135deg, rgba(45, 45, 45, 0.95), rgba(35, 35, 35, 0.85));
+    border: 1px solid rgba(58, 58, 58, 0.8);
+    box-shadow: 
+        0 4px 16px rgba(0, 0, 0, 0.4),
+        inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    position: relative;
+    overflow: hidden;
+}
+
+.panel::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(92, 141, 246, 0.6), transparent);
+    z-index: 1;
 }
 
 .right_panel {
@@ -77,20 +93,63 @@ textarea:focus, input:focus{
     position: absolute;
     display: flex;
     flex-direction: column;
+    max-width: 420px;
+	gap: 3px;
 }
 
 .claim {
-    margin-top: var(--spacing-md);
+    border: 1px solid rgba(58, 58, 58, 0.6);
+    background: linear-gradient(135deg, rgba(26, 26, 26, 0.95), rgba(35, 35, 35, 0.85));
 }
 
 .claim > table {
     width: 100%;
     text-align: center;
+    border-collapse: collapse;
+}
+
+.claim > table th {
+    background: linear-gradient(135deg, rgba(15, 15, 15, 0.9), rgba(26, 26, 26, 0.8));
+    color: var(--color-premiere-accent);
+    font-weight: 600;
+    padding: var(--spacing-sm);
+    border-bottom: 1px solid rgba(92, 141, 246, 0.3);
+    text-transform: uppercase;
+    font-size: var(--font-size-xs);
+    letter-spacing: 0.5px;
+}
+
+.claim > table td {
+    padding: var(--spacing-sm);
+    border-bottom: 1px solid rgba(58, 58, 58, 0.3);
+    color: var(--color-premiere-text-dim);
+}
+
+.claim > table tr:hover {
+    background: rgba(92, 141, 246, 0.1);
+    transition: background 0.2s ease;
 }
 
 .nationheader {
-    padding: var(--spacing-xs);
+    padding: 0;
     position: relative;
+    background: linear-gradient(135deg, rgba(15, 15, 15, 0.9), rgba(26, 26, 26, 0.7));
+    border-bottom: 1px solid rgba(92, 141, 246, 0.3);
+}
+
+.nationheader::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(45deg, 
+        rgba(92, 141, 246, 0.05) 0%, 
+        transparent 30%, 
+        transparent 70%, 
+        rgba(92, 141, 246, 0.05) 100%);
+    z-index: 0;
 }
 
 .nationheader > img {
@@ -99,29 +158,49 @@ textarea:focus, input:focus{
     max-height: 100%;
     object-fit: cover;
     z-index: 0;
-
+    opacity: 0.7;	
+	
     top: 0;
     right: 0;
+}
 
+.nationheader > .flag {
     -webkit-mask-image: linear-gradient(to right, rgba(0,0,0,0), rgba(0,0,0,1));
     -webkit-mask-size: 100% 100%;
     -webkit-mask-repeat: no-repeat;
-
+	
     mask-image: linear-gradient(to right, rgba(0,0,0,0), rgba(0,0,0,1));
     mask-size: 100% 100%;
     mask-repeat: no-repeat;
 }
 
+.nationheader > div {
+    padding: var(--spacing-md);
+    position: relative;
+    z-index: 2;
+}
+
 .nationheader > div > h1 {
     margin: 0;
-    z-index: 1;
     position: relative;
+    color: var(--color-premiere-text);
+    font-weight: 700;
+    font-size: var(--font-size-xl);
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.7);
 }
 
 .nationheader > div > p {
     margin: 0;
-    z-index: 1;
+    margin-top: var(--spacing-xs);
     position: relative;
+    color: var(--color-premiere-text-dim);
+    font-size: var(--font-size-sm);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
+}
+
+.nationheader > div > p:last-child {
+    color: var(--color-premiere-accent);
+    font-weight: 600;
 }
 
 .info {
@@ -129,13 +208,19 @@ textarea:focus, input:focus{
 }
 
 .coordinates {
-    font-size: var(--font-size-lg);
+    font-size: var(--font-size-base);
     display: flex;
     font-weight: 600;
+    background: linear-gradient(135deg, rgba(35, 35, 35, 0.95), rgba(45, 45, 45, 0.85));
+    border: 1px solid rgba(92, 141, 246, 0.4);
+    overflow: hidden;
+    box-shadow: 
+        0 2px 8px rgba(0, 0, 0, 0.3),
+        inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
 .coordinates > span {
-    padding: var(--spacing-xs)
+    padding: var(--spacing-sm);
 }
 
 .coordinates > label {
@@ -150,13 +235,18 @@ textarea:focus, input:focus{
     padding-right: var(--spacing-sm);
 }
 
-
 .coordinates > label > input {
     background: transparent;
-    font-size: var(--font-size-lg);
+    font-size: var(--font-size-base);
     border: 0px;
     height: 100%;
     field-sizing: content;
-    min-width: 4rem;
-    margin-left: var(--spacing-sm);
+    color: var(--color-premiere-text);
+    font-weight: 600;
+    min-width: 3rem;
+}
+
+.coordinates > label > input:focus {
+    color: var(--color-premiere-accent);
+    text-shadow: 0 0 8px rgba(92, 141, 246, 0.3);
 }
