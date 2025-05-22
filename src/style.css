@@ -34,7 +34,7 @@
     --laptop: 992px;
     --desktop: 1200px;
 
-    font-family: Segoe UI,SF Pro Display,-apple-system,BlinkMacSystemFont,Roboto,Oxygen,Ubuntu,Cantarell,sans-serif;
+    font-family: Segoe UI, SF Pro Display, -apple-system, BlinkMacSystemFont, Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
     line-height: 1.5;
     font-weight: 400;
     color-scheme: dark;
@@ -59,6 +59,14 @@ input::-webkit-inner-spin-button {
 
 input[type=number] {
   -moz-appearance: textfield;
+}
+
+[contenteditable] {
+  outline: 0px solid transparent;
+}
+
+input { /* why? i dont know */
+    font-family:  UI, SF Pro Display, -apple-system, BlinkMacSystemFont, Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
 }
 
 textarea:focus, input:focus{
@@ -95,6 +103,49 @@ textarea:focus, input:focus{
     flex-direction: column;
     max-width: 420px;
 	gap: 3px;
+}
+
+.search_panel {
+    bottom: var(--spacing-md);
+    right: var(--spacing-md);
+    position: absolute;
+    display: flex;
+    flex-direction: column;
+}
+
+.search_panel > #search_results {
+    display: flex;
+    flex-direction: column;
+    background: linear-gradient(0deg, rgba(26, 26, 26, 0.5), rgba(35, 35, 35, 0));
+}
+
+.search_panel > #search_results > span {
+    text-align: right;
+    font-size: var(--font-size-xl);
+    color: var(--color-premiere-accent2);
+    filter: drop-shadow(2px 2px 2px #000);
+}
+
+.search_panel > #search_results:last-child {
+    background-color: rgba(35, 35, 35, 0.5);
+    color: red;
+}
+
+.search_panel > #search_results > span > span {
+    color: var(--color-premiere-text);
+}
+
+.search_panel > .search_bar > span {
+    margin: 0;
+    border: 0;
+    padding: var(--spacing-sm);
+    float: right;
+    font-size: var(--font-size-xl);
+}
+
+.search_panel > .search_bar > span:empty::before {
+    content: "Start Typing to search by claim, nation or player";
+    color: var(--color-premiere-accent2)
 }
 
 .claim {
@@ -158,13 +209,14 @@ textarea:focus, input:focus{
     max-height: 100%;
     object-fit: cover;
     z-index: 0;
-    opacity: 0.7;	
 	
     top: 0;
     right: 0;
 }
 
 .nationheader > .flag {
+    opacity: 0.7;	
+
     -webkit-mask-image: linear-gradient(to right, rgba(0,0,0,0), rgba(0,0,0,1));
     -webkit-mask-size: 100% 100%;
     -webkit-mask-repeat: no-repeat;
@@ -172,6 +224,17 @@ textarea:focus, input:focus{
     mask-image: linear-gradient(to right, rgba(0,0,0,0), rgba(0,0,0,1));
     mask-size: 100% 100%;
     mask-repeat: no-repeat;
+}
+
+.nationheader > .player_model {
+    max-height: calc(100% - var(--spacing-sm) * 2); /* we do a little trolling */
+    filter: drop-shadow(2px 2px 2px #000);
+    margin: var(--spacing-sm);
+
+    -webkit-transform: scale(-1, 1);
+    -moz-transform: scale(-1, -1);
+    -o-transform: scale(-1, 1);
+    transform: scale(-1, 1);
 }
 
 .nationheader > div {

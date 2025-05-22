@@ -1,5 +1,7 @@
 const x_input = document.getElementById("ui_x")
 const z_input = document.getElementById("ui_z")
+const search_span = document.getElementById("search_span")
+const search_results = document.getElementById("search_results")
 
 function lerp(a, b, alpha) {
     return a + (b - a) * alpha
@@ -29,6 +31,8 @@ class WorldMap {
         this._derived_zoom = 1
         this._derived_lod = 2
         this._derived_depth = Math.floor(config.depth / 2)
+
+        this.last_search = []
 
         this.lazy_update = false
 
@@ -138,9 +142,6 @@ class WorldMap {
         await PIXI.Assets.load("assets/round_6x6.xml")
 
         document.body.appendChild(this.app.canvas)
-        this.app.canvas.addEventListener("contextmenu", e => {
-            e.preventDefault()
-        })
 
         this.load_map("bluemap")
         this.load_claims()
@@ -566,6 +567,10 @@ class WorldMap {
         }
     }
 
+    setFocusedClaim(id) {
+        
+    }
+
     registerEvents() {
         let mouseStartX = 0
         let mouseStartY = 0
@@ -592,6 +597,41 @@ class WorldMap {
             }
         })
 
+        this.app.canvas.addEventListener("contextmenu", e => {
+            e.preventDefault()
+        })
+
+        window.addEventListener("keydown", event => {
+            if (/^[a-zA-Z.]{1}$/.test(event.key) && search_span != document.activeElement) {
+                search_span.innerText = ""
+                search_span.focus()
+            }
+        })
+
+        search_span.addEventListener('keydown', (e) => {
+            if (e.key == 'Enter') {
+
+                if (this.last_search.length > 0) {
+                    this.setFocusedClaim(last_search[this.last_search.length - 1])
+                }
+                
+                e.preventDefault()
+            }
+
+            if (e.key == "Escape") {
+                // What the fuck where they thinking when they named this
+                search_span.blur()
+                
+                if (this.sear)
+            }
+        })
+
+        search_span.addEventListener("keyup", (e) => {
+            if (search_span == document.activeElement) {
+                this.updateSearch(search_span.innerText)
+            }
+        })
+
         window.addEventListener("pointermove", event => {
             this.pointer.x = event.clientX
             this.pointer.y = event.clientY
@@ -599,15 +639,18 @@ class WorldMap {
         })
 
         document.addEventListener("mouseenter", event => {
+            if (event.target != this.app.canvas) return
             this.pointer.onscreen = true
         })
 
 
         document.addEventListener("mouseleave", event => {
+            if (event.target != this.app.canvas) return
             this.pointer.onscreen = false
         })
 
         window.addEventListener("mousedown", event => {
+            if (event.target != this.app.canvas) return
             mouseStartX = event.x
             mouseStartY = event.y
             dragging = true
@@ -631,6 +674,7 @@ class WorldMap {
         })
 
         window.addEventListener("mouseup", event => {
+            if (event.target != this.app.canvas) return
             dragging = false
 
             this.lazy_update = false
@@ -646,6 +690,7 @@ class WorldMap {
         let initial_zoom = 0
         let initial_touch_delta = 0
         window.addEventListener("touchstart", event => {
+            if (event.target != this.app.canvas) return
             this.pointer.onscreen = true
 
             if (event.touches.length == 2) {
@@ -696,6 +741,7 @@ class WorldMap {
 		})
 
         window.addEventListener("touchend", event => {
+            if (event.target != this.app.canvas) return
             this.pointer.onscreen = false
 
             zooming = false
@@ -703,6 +749,50 @@ class WorldMap {
 
             this.lazy_update = false
 		})
+    }
+
+    pullMatchingSubstring(str, substring) {
+        const index = str.toLowerCase().indexOf(substring.toLowerCase())
+
+        if (index === -1) {
+            return false
+        }
+
+        return [
+            str.substring(0, index),
+            str.substring(index, index + substring.length),
+            str.substring(index + substring.length)
+        ]
+    }
+
+
+    updateSearch(text) {
+        const children = []
+        const claims = []
+
+        for (const [id, claim] of Object.entries(this.claims)) {
+            const match = this.pullMatchingSubstring(claim.label, text)
+
+            if (match !== false) {
+                const parent = document.createElement("span")
+
+                parent.appendChild(document.createTextNode(match[0]))
+                
+                const match_span = document.createElement("span")
+                match_span.innerHTML = match[1]
+                parent.appendChild(match_span)
+
+                parent.appendChild(document.createTextNode(match[2]))
+
+                children.push(parent)
+                claims.push(id)
+            }
+
+            if (children.length > 10) break
+        }
+
+        this.last_search = claims
+        search_results.replaceChildren(...children)
     }
 
     rectanglesIntersect([[x1, y1], [x2, y2]], [[x3, y3], [x4, y4]]) {
