@@ -568,7 +568,7 @@ class WorldMap {
     }
 
     setFocusedClaim(id) {
-        
+
     }
 
     registerEvents() {
@@ -621,8 +621,6 @@ class WorldMap {
             if (e.key == "Escape") {
                 // What the fuck where they thinking when they named this
                 search_span.blur()
-                
-                if (this.sear)
             }
         })
 
