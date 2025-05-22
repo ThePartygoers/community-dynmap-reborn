@@ -1,3 +1,6 @@
+const x_input = document.getElementById("ui_x")
+const z_input = document.getElementById("ui_z")
+
 function lerp(a, b, alpha) {
     return a + (b - a) * alpha
 }
@@ -34,6 +37,7 @@ class WorldMap {
         this.claim_path = {}
         this.claim_points = {}
         this.claim_graphics = {}
+        this.force_claim_redraw = false
         this.claim_quadtree = new Quadtree({
             x: 0,
             y: 0,
@@ -134,7 +138,9 @@ class WorldMap {
         await PIXI.Assets.load("assets/round_6x6.xml")
 
         document.body.appendChild(this.app.canvas)
-        this.app.canvas.addEventListener("contextmenu", e => e.preventDefault())
+        this.app.canvas.addEventListener("contextmenu", e => {
+            e.preventDefault()
+        })
 
         this.load_map("bluemap")
         this.load_claims()
@@ -172,7 +178,7 @@ class WorldMap {
             () => `GRID: S ${this.getGridSpacing()}`,
             () => `CLAIMS: [${this.stats.claims_rendered > 0 ? "HIGH" : "LOW" }] ${this.stats.claims_rendered}/${Object.keys(this.claims).length}`,
             () => `POINTER: ${this.pointer.onscreen} ${this.pointer.x} ${this.pointer.y} ${this.pointer.m1}`,
-            () => `CANDIDATES: ${this.stats.candidates}/${this.stats.quadtree_content}`
+            () => `HOVER: C ${this.stats.candidates}/${this.stats.quadtree_content} H: ${this.hovered_claim}`
         ]
 
         if (this.debug) {
@@ -224,6 +230,9 @@ class WorldMap {
 
         const screenWidth = document.body.clientWidth
         const screenHeight = document.body.clientHeight
+
+        if (document.activeElement != x_input) x_input.value = Math.floor(this.state.x)
+        if (document.activeElement != z_input) z_input.value = Math.floor(this.state.z)
 
         this.app.renderer.resize(screenWidth, screenHeight)
 
@@ -378,6 +387,7 @@ class WorldMap {
         this.stats.candidates = pointer_candidates.size
 
         let claims_rendered = 0
+        let anyHovered = this.lazy_update
 
         if (this._derived_lod > 0) {
             let low_res_origin = this.toScreenSpace([0, 0])
@@ -420,7 +430,7 @@ class WorldMap {
             for (const [id, bounds] of Object.entries(renderable)) {
                 let graphics = this.claim_graphics[id]
 
-                let shouldRedraw = false
+                let shouldRedraw = this.hovered_claim == id || this.force_claim_redraw
 
                 if (graphics == undefined) {
                     graphics = new PIXI.Graphics()
@@ -470,8 +480,9 @@ class WorldMap {
                         this.claims[id].fillColor.g,
                         this.claims[id].fillColor.b
                     )
+                    let blend = "inherit"
 
-                    if (pointer_candidates.has(id) && this.hovered_claim != id) {
+                    if (pointer_candidates.has(id)) {
                         if (
                             pointer_world_pos[0] > world_bounds[0][0] &&
                             pointer_world_pos[0] < world_bounds[1][0] &&
@@ -490,19 +501,36 @@ class WorldMap {
 
                             if (polygon.contains(pointer_world_pos[0], pointer_world_pos[1])) {
                                 this.hovered_claim = id
+                                anyHovered = true
+                                this.force_claim_redraw = true
                             }
                         }
                     }
 
                     if (this.hovered_claim == id) {
-                        clr = 0xFFFFFF
+                        clr = 0x11CCCC
+                        blend = "divide"
                     }
                 
                     graphics.clear()
                     graphics.path(path)
-                    graphics.fill({
+                    graphics.blendMode = blend
+                    
+                    if (this.state.zoom < 10) {
+                        let a = Math.max(0, Math.min(0.6, 1 / (this.state.zoom + 1.7)) - 0.1)
+
+                        if (this.state.zoom < 0) a = 0.5
+
+                        graphics.fill({
+                            color: clr,
+                            alpha: a
+                        }, path)
+                    }
+
+                    graphics.stroke({
                         color: clr,
-                        alpha: 0.5
+                        alpha: 0.5,
+                        width: 1/16
                     }, path)
                 }
 
@@ -516,9 +544,14 @@ class WorldMap {
             }
         }
 
+        if (!anyHovered) {
+            this.hovered_claim = undefined
+        }
+
         this.stats.claims_rendered = claims_rendered
 
         this.stats.frametime = performance.now() - perf_begin
+        this.force_claim_redraw = false
     }
 
     rgbToInt(r, g, b) {
@@ -540,6 +573,24 @@ class WorldMap {
 
         let mapStartX = 0
         let mapStartY = 0
+
+        x_input.addEventListener("focus", () => x_input.select())
+        z_input.addEventListener("focus", () => z_input.select())
+
+        x_input.addEventListener("input", event => {
+            const x = parseInt(x_input.value)
+            if (x) {
+                this.state.x = x
+                this.lazy_update = false
+            }
+        })
+        z_input.addEventListener("input", event => {
+            const z = parseInt(z_input.value)
+            if (z) {
+                this.state.x = z
+                this.lazy_update = false
+            }
+        })
 
         window.addEventListener("pointermove", event => {
             this.pointer.x = event.clientX
