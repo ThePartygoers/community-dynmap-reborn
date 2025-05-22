@@ -87,6 +87,8 @@ class WorldMap {
         this.focused_claim = undefined
 
         this.debug = true
+
+        this.setFocusedClaim(undefined)
     }
 
     async load_map(id) {
