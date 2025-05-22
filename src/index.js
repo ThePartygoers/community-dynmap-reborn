@@ -15,15 +15,25 @@ class WorldMap {
         })
 
         this.map_root = new PIXI.Container({ isRenderGroup: true })
-        this.sprite_pool = []
+        this.map_root.name = "MapRoot"
+
+        this.claim_high_res_group = new PIXI.Container({ isRenderGroup: true })
+        this.claim_high_res_group.name = "Claim HR"
+
+        this.map_tile_sprite_pool = []
         this.children_cache = {}
 
         this._derived_zoom = 1
         this._derived_lod = 2
         this._derived_depth = Math.floor(config.depth / 2)
 
+        this.lazy_update = false
+
         this.claims = {}
         this.claim_bounds = {}
+        this.claim_path = {}
+        this.claim_points = {}
+        this.claim_graphics = {}
         this.claim_quadtree = new Quadtree({
             x: 0,
             y: 0,
@@ -85,21 +95,20 @@ class WorldMap {
         }
     }
 
-    async load_markers() {
-        const response = await fetch("static/markers.json")
+    async load_claims() {
+        const response = await fetch("static/claims.json")
         this.claims = await response.json()
 
         const lowResGraphics = new PIXI.Graphics()
-        lowResGraphics.name = "Temp"
 
         const scaleFactor = this.config.claims_low_res / (this.config.depth * this.config.tile_size)
 
         for (const [id, claim] of Object.entries(this.claims)) {
-            let points = []
+            let low_res_space_points = []
 
             claim.shape.forEach(point => {
-                points.push(point.x * scaleFactor + this.config.claims_low_res / 2)
-                points.push(point.z * scaleFactor + this.config.claims_low_res / 2)
+                low_res_space_points.push(point.x * scaleFactor + this.config.claims_low_res / 2)
+                low_res_space_points.push(point.z * scaleFactor + this.config.claims_low_res / 2)
             })
             
             lowResGraphics.beginFill(this.rgbToInt(
@@ -107,15 +116,15 @@ class WorldMap {
                     claim.fillColor.g,
                     claim.fillColor.b
             ), 0.5)
-            lowResGraphics.drawPolygon(points)
+            lowResGraphics.drawPolygon(low_res_space_points)
             lowResGraphics.endFill()
         }
 
         
-        const texture = PIXI.RenderTexture.create({ width: this.config.claims_low_res, height: this.config.claims_low_res })
-        this.app.renderer.render(lowResGraphics, { renderTexture: texture })
+        const low_res_texture = PIXI.RenderTexture.create({ width: this.config.claims_low_res, height: this.config.claims_low_res })
+        this.app.renderer.render(lowResGraphics, { renderTexture: low_res_texture })
 
-        this.claim_low_res.texture = texture
+        this.claim_low_res.texture = low_res_texture
     }
 
     async init() {
@@ -128,7 +137,7 @@ class WorldMap {
         this.app.canvas.addEventListener("contextmenu", e => e.preventDefault())
 
         this.load_map("bluemap")
-        this.load_markers()
+        this.load_claims()
         this.registerEvents()
 
         const debug_container = new PIXI.Container()
@@ -147,19 +156,15 @@ class WorldMap {
         this.claim_low_res.zIndex = 1
         this.claim_low_res.anchor.x = 0.5
         this.claim_low_res.anchor.y = 0.5
-        
-        this.claims_high_res = new PIXI.Graphics()
-        this.claims_high_res.name = "Claims HR"
-        this.claims_high_res.zIndex = 1
 
         let frametime_avg = 0
         let debug_lines = [
             () => `[DEBUG] Community Dynmap Reborn ${WorldMap.VERSION}`,
             () => {
                 frametime_avg = lerp(frametime_avg, this.stats.frametime, 0.1)
-                return `FPS: ${this.app.ticker.FPS.toFixed(1)} (VSYNC) ${(frametime_avg/(1000/144)*100).toFixed(2)}% ${frametime_avg.toFixed(4)}ms`
+                return `FPS: ${this.app.ticker.FPS.toFixed(1)} (VSYNC) ${(frametime_avg/(1000/144)*100).toFixed(2)}% ${frametime_avg.toFixed(4)}ms ${this.lazy_update ? "LAZY" : "FULL"}`
             },
-            () => `T: ${this.stats.tiles_rendered} P: ${this.sprite_pool.length}`,
+            () => `T: ${this.stats.tiles_rendered} P: ${this.map_tile_sprite_pool.length}`,
             () => `POS: ${Math.round(this.state.x)} ${Math.round(this.state.z)} ZOOM: ${this.state.zoom.toFixed(1)}`,
             () => `LOD: ${this._derived_lod} SF: ${Math.floor(this._derived_zoom * 100) / 100}`,
             () => `CHILDREN: ${Object.keys(this.children_cache).length}`,
@@ -195,8 +200,8 @@ class WorldMap {
         }
         
         this.app.stage.addChild(this.map_root)
+        this.app.stage.addChild(this.claim_high_res_group)
         this.app.stage.addChild(this.claim_low_res)
-        this.app.stage.addChild(this.claims_high_res)
         this.app.stage.addChild(this.grid_graphics)
         this.app.stage.addChild(debug_container)
         
@@ -254,7 +259,7 @@ class WorldMap {
 
         this.stats.tiles_rendered = tiles
 
-        const sprites = this.allocateSprites(tiles)
+        const map_tile_sprites = this.allocateSprites(this.map_tile_sprite_pool, tiles)
 
         for (let lod = this.config.lod - 1; lod >= this._derived_lod; lod--) {
             const tileOrigin = this.toWorldSpace([0, 0])
@@ -277,7 +282,7 @@ class WorldMap {
                     if (Math.abs(global_tile_x) > this._derived_depth / Math.pow(2, lod)) continue
                     if (Math.abs(global_tile_z) > this._derived_depth / Math.pow(2, lod)) continue
 
-                    const sprite = sprites.pop()
+                    const sprite = map_tile_sprites.pop()
 
                     if (sprite == undefined) break
 
@@ -340,7 +345,7 @@ class WorldMap {
 
             const grid_pixel_size = grid_spacing * this._derived_zoom
             const linesAcrossWidth = screenWidth / grid_pixel_size + 1
-            const linesAcrossHeight = screenWidth / grid_pixel_size + 1
+            const linesAcrossHeight = screenHeight / grid_pixel_size + 1
 
             for (let column = 0; column < linesAcrossWidth; column++) {
                 this.grid_graphics.moveTo(grid_screen_origin[0] + column * grid_pixel_size, 0).lineTo(grid_screen_origin[0] + column * grid_pixel_size, screenHeight)
@@ -355,14 +360,14 @@ class WorldMap {
             this.grid_graphics.stroke({ color: 0x555555, pixelLine: true })
         }
 
-        let cursor_world_pos = this.toWorldSpace([this.pointer.x, this.pointer.y])
+        let pointer_world_pos = this.toWorldSpace([this.pointer.x, this.pointer.y])
 
         let pointer_candidates = this._last_candidates
 
         if (this.pointer.hasMoved && this.pointer.onscreen) {
             pointer_candidates = new Set(this.claim_quadtree.retrieve({
-                x: cursor_world_pos[0],
-                y: cursor_world_pos[1],
+                x: pointer_world_pos[0],
+                y: pointer_world_pos[1],
                 width: 1,
                 height: 1,
             }).map(x => x.id))
@@ -380,103 +385,135 @@ class WorldMap {
             this.claim_low_res.y = low_res_origin[1]
             this.claim_low_res.scale = this._derived_zoom / (this.config.claims_low_res / this.config.tile_size / this.config.depth)
             this.claim_low_res.visible = true
-            this.claims_high_res.visible = false
-        } else {
+
+            this.claim_high_res_group.visible = false
+        } else if (!this.lazy_update) {
             this.claim_low_res.visible = false
-            
-            this.claims_high_res.clear()
-    
+            this.claim_high_res_group.visible = true
+
+            this.lazy_update = true
+
+            const renderable = {}
+
             for (const [id, claim] of Object.entries(this.claims)) {
+                const bounding_box = this.getClaimBounds(id).map(x => this.toScreenSpace(x))
 
-                let bounding_box = this.getClaimBounds(id)
-                
-                if (bounding_box == undefined) continue
+                if (
+                    bounding_box[1][0] < 0 ||
+                    bounding_box[0][0] > screenWidth ||
+                    bounding_box[1][1] < 0 |
+                    bounding_box[0][1] > screenHeight
+                ) {
+                    const dead_graphics = this.claim_graphics[id]
 
-                bounding_box = bounding_box.map(point => {
-                    return this.toScreenSpace(point)
-                })
+                    if (dead_graphics) {
+                        // TODO: Cleanup old instances
+                        dead_graphics.visible = false
+                    }
 
-                if (bounding_box[1][0] < 0) continue
-                if (bounding_box[1][1] < 0) continue
-                if (bounding_box[0][0] > screenWidth) continue
-                if (bounding_box[0][1] > screenHeight) continue
-
-                if (!this.rectanglesIntersect(bounding_box, [[0, 0], [screenWidth, screenHeight]])) {
                     continue
                 }
 
-                let isHovered = false
+                renderable[id] = bounding_box
+            }
 
-                let points = []
+            for (const [id, bounds] of Object.entries(renderable)) {
+                let graphics = this.claim_graphics[id]
 
-                claim.shape.forEach(point => {
-                    const screen_pos = this.toScreenSpace([point.x, point.z])
+                let shouldRedraw = false
 
-                    points.push(screen_pos[0])
-                    points.push(screen_pos[1])
-                })
+                if (graphics == undefined) {
+                    graphics = new PIXI.Graphics()
+                    graphics.name = id
 
-                if (this.pointer.onscreen) {
-                    if (this.pointer.hasMoved == false) {
-                        if (this.hovered_claim == id) {
-                            isHovered = true
+                    shouldRedraw = true
+
+                    this.claim_high_res_group.addChild(graphics)
+
+                    this.claim_graphics[id] = graphics
+                }
+
+                if (this.hovered_claim == id) {
+                    shouldRedraw = true
+                }
+
+                if (pointer_candidates.has(id)) {
+                    shouldRedraw = true
+                }
+
+                if (shouldRedraw) {
+                    let path = this.claim_path[id]
+
+                    const world_bounds = this.getClaimBounds(id)
+
+                    if (path == undefined) {
+                        let points = []
+                        
+                        this.claims[id].shape.forEach(point => {
+                            points.push((point.x - world_bounds[0][0]) / 16)
+                            points.push((point.z - world_bounds[0][1]) / 16)
+                        })
+
+                        path = new PIXI.GraphicsPath().moveTo(points[0], points[1])
+
+                        for (let i = 2; i < points.length; i+=2) {
+                            path.lineTo(points[i], points[i + 1])
                         }
-                    } else if (pointer_candidates.has(id)) {
+
+                        path.closePath()
+
+                        this.claim_path[id] = path
+                    }
+
+                    let clr = this.rgbToInt(
+                        this.claims[id].fillColor.r,
+                        this.claims[id].fillColor.g,
+                        this.claims[id].fillColor.b
+                    )
+
+                    if (pointer_candidates.has(id) && this.hovered_claim != id) {
                         if (
-                            this.pointer.x > bounding_box[0][0] &&
-                            this.pointer.x < bounding_box[1][0] &&
-                            this.pointer.y > bounding_box[0][1] &&
-                            this.pointer.y < bounding_box[1][1]
+                            pointer_world_pos[0] > world_bounds[0][0] &&
+                            pointer_world_pos[0] < world_bounds[1][0] &&
+                            pointer_world_pos[1] > world_bounds[0][1] &&
+                            pointer_world_pos[1] < world_bounds[1][1]
                         ) {
+                            // TODO: derive from previous calculation
+                            let points = []
+                        
+                            this.claims[id].shape.forEach(point => {
+                                points.push(point.x)
+                                points.push(point.z)
+                            })
+
                             const polygon = new PIXI.Polygon(points)
 
-                            if (polygon.contains(this.pointer.x, this.pointer.y)) {
-                                isHovered = true
+                            if (polygon.contains(pointer_world_pos[0], pointer_world_pos[1])) {
                                 this.hovered_claim = id
                             }
                         }
                     }
-                }
 
+                    if (this.hovered_claim == id) {
+                        clr = 0xFFFFFF
+                    }
                 
-
-                const path = new PIXI.GraphicsPath().moveTo(points[0], points[1])
-
-                let clr = this.rgbToInt(
-                    claim.fillColor.r,
-                    claim.fillColor.g,
-                    claim.fillColor.b
-                )
-
-                if (isHovered) {
-                    clr = 0xFFFFFF
-                }
-
-                for (let i = 2; i < points.length; i+=2) {
-                    path.lineTo(points[i], points[i + 1])
-                }
-
-                path.closePath()
-
-                this.claims_high_res.path(path)
-
-                if (this.state.zoom >= 10) {
-                    this.claims_high_res.stroke({
-                        color: clr,
-                        alpha: 0.5,
-                        width: 5
-                    }, path)
-                } else {
-                    this.claims_high_res.fill({
+                    graphics.clear()
+                    graphics.path(path)
+                    graphics.fill({
                         color: clr,
                         alpha: 0.5
                     }, path)
                 }
 
                 claims_rendered++
+                
+                graphics.x = bounds[0][0]
+                graphics.y = bounds[0][1]
+                graphics.width = (bounds[1][0] - bounds[0][0])
+                graphics.height = (bounds[1][1] - bounds[0][1])
+                graphics.visible = true
             }
-
-            this.claims_high_res.visible = true
         }
 
         this.stats.claims_rendered = claims_rendered
@@ -526,6 +563,8 @@ class WorldMap {
 
             mapStartX = this.state.x
             mapStartY = this.state.z
+
+            this.lazy_update = false
         })
 
         window.addEventListener("mousemove", event => {
@@ -536,14 +575,20 @@ class WorldMap {
                 this.state.x = mapStartX + delta_x
                 this.state.z = mapStartY + delta_y
             }
+
+            this.lazy_update = false
         })
 
         window.addEventListener("mouseup", event => {
             dragging = false
+
+            this.lazy_update = false
         })
 
         window.addEventListener("wheel", event => {
             this.state.zoom = Math.max(this.config.min_zoom, Math.min(this.config.max_zoom, this.state.zoom - event.deltaY / 100))
+
+            this.lazy_update = false
         })
 
         let zooming = false
@@ -570,6 +615,8 @@ class WorldMap {
 
             mapStartX = this.state.x
             mapStartY = this.state.z
+
+            this.lazy_update = false
         })
 
         window.addEventListener("touchmove", event => {
@@ -593,6 +640,8 @@ class WorldMap {
                 this.state.x = mapStartX + delta_x
                 this.state.z = mapStartY + delta_y
             }
+
+            this.lazy_update = false
 		})
 
         window.addEventListener("touchend", event => {
@@ -600,6 +649,8 @@ class WorldMap {
 
             zooming = false
             dragging = false
+
+            this.lazy_update = false
 		})
     }
 
@@ -614,14 +665,15 @@ class WorldMap {
 
     getClaimBounds(id) {
         let bounds = this.claim_bounds[id]
+
         if (bounds) {
             return bounds
         }
 
         let min_x = 9e9
         let min_z = 9e9
-        let max_x = 0
-        let max_z = 0
+        let max_x = -9e9
+        let max_z = -9e9
 
         const claim = this.claims[id]
 
@@ -650,28 +702,27 @@ class WorldMap {
         }
     }
 
-    allocateSprites(count) {
+    allocateSprites(pool, count) {
         let sprites = []
         let head = 0
 
         while (sprites.length < count) {
-            if (head >= this.sprite_pool.length) {
+            if (head >= pool.length) {
                 const sprite = PIXI.Sprite.from("sample.png")
 
                 this.map_root.addChild(sprite)
-                this.app.stage.addChild(sprite)
 
-                this.sprite_pool.push(sprite)
+                pool.push(sprite)
             }
 
-            sprites.push(this.sprite_pool[head])
+            sprites.push(pool[head])
             head++
 
             if (head > this.config.max_sprites) break
         }
 
-        for (let i = head; i < this.sprite_pool.length; i++) {
-            const sprite = this.sprite_pool[i]
+        for (let i = head; i < pool.length; i++) {
+            const sprite = pool[i]
 
             sprite.visible = false
         }
