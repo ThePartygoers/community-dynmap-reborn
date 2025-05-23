@@ -9,6 +9,7 @@ const claim_panel_owner = document.getElementById("claim_owner")
 const claim_panel_balance = document.getElementById("claim_balance")
 const claim_panel_flag = document.getElementById("claim_flag")
 const claim_panel_owner_model = document.getElementById("claim_owner_model")
+const claim_panel_players = document.getElementById("claim_players")
 
 function lerp(a, b, alpha) {
     return a + (b - a) * alpha
@@ -600,13 +601,75 @@ class WorldMap {
 
             claim_panel_name.innerHTML = claim.name
             claim_panel_owner.innerHTML = `Owned by ${claim.players[0]}`
-            claim_panel_balance.innerHTML = `: $${claim.balance}`
+            claim_panel_balance.innerHTML = `: $${claim.balance} (${claim.players.length} players)`
 
             claim_panel_flag.src = "assets/flag_temp.png"
             claim_panel_owner_model.src = ""
             claim_panel_owner_model.src = `https://mc-heads.net/body/${claim.players[0]}/left`
 
             claim_panel.style.display = ""
+
+            const header = document.createElement("tr")
+            const player_header = document.createElement("th")
+            player_header.innerText = "PLAYER"
+            header.appendChild(player_header)
+
+            const rank_header = document.createElement("th")
+            rank_header.innerText = "PLAYER"
+            header.appendChild(rank_header)
+
+            const tier_header = document.createElement("th")
+            tier_header.innerText = "TIER"
+            header.appendChild(tier_header)
+
+
+            let children = [
+                header
+            ]
+
+            let index = 0
+            claim.players.forEach(player => {
+                if (player == "<unknown>" || player == "...") {
+                    index = -1
+                    return
+                }
+
+                const row = document.createElement("tr")
+                const player_label = document.createElement("td")
+                player_label.innerText = player
+                row.appendChild(player_label)
+
+                const rank_label = document.createElement("td")
+                rank_label.innerText = index == 0 ? "owner" : "member"
+                row.appendChild(rank_label)
+
+                const tier_label = document.createElement("td")
+                tier_label.innerText = "unknown"
+                row.appendChild(tier_label)
+
+                children.push(row)
+
+                index++
+            })
+
+            if (index == -1) {
+                const footer = document.createElement("tr")
+                const player_footer = document.createElement("td")
+                player_footer.innerText = "..."
+                footer.appendChild(player_footer)
+
+                const rank_footer = document.createElement("td")
+                rank_footer.innerText = "..."
+                footer.appendChild(rank_footer)
+
+                const tier_footer = document.createElement("td")
+                tier_footer.innerText = "..."
+                footer.appendChild(tier_footer)
+
+                children.push(footer)
+            }
+
+            claim_panel_players.replaceChildren(...children)
 
             // this.teleport({
             //     x: claim.position.x,w
