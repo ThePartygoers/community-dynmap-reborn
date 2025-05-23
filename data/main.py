@@ -4,9 +4,8 @@ import hashlib
 import pymongo
 import dotenv
 import json
-import os
-import numpy as np
 import time
+import os
 import sys
 import math
 
@@ -16,6 +15,7 @@ from multiprocessing import shared_memory
 from PIL import Image, UnidentifiedImageError
 from io import BytesIO
 from tqdm import tqdm
+import numpy as np
 
 DL_WORKERS = 100
 LOD_WORKERS = 8
@@ -192,7 +192,10 @@ def main():
         final_output[id] = document
 
     with open(OUTPUT + "/" + "claims.json", "w") as fh:
-        fh.write(json.dumps(final_output))
+        fh.write(json.dumps({
+            "claims": final_output,
+            "timestamp": math.floor(time.time())
+        }))
 
     exit(0)
 

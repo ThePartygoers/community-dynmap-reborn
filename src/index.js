@@ -40,6 +40,7 @@ class WorldMap {
         this._derived_depth = Math.floor(config.depth / 2)
 
         this.last_search = []
+        this.search_index = 0
 
         this.lazy_update = false
 
@@ -80,7 +81,8 @@ class WorldMap {
             tiles_rendered: 0,
             claims_rendered: 0,
             frametime: 0,
-            quadtree_content: 0
+            quadtree_content: 0,
+            updateTimestamp: 0
         }
 
         this.hovered_claim = undefined
@@ -115,7 +117,9 @@ class WorldMap {
 
     async load_claims() {
         const response = await fetch("static/claims.json")
-        this.claims = await response.json()
+        const decoded = await response.json()
+        this.claims = decoded.claims
+        this.stats.updateTimestamp = decoded.timestamp * 1000
 
         const lowResGraphics = new PIXI.Graphics()
 
@@ -181,7 +185,7 @@ class WorldMap {
                 frametime_avg = lerp(frametime_avg, this.stats.frametime, 0.1)
                 return `FPS: ${this.app.ticker.FPS.toFixed(1)} (VSYNC) ${(frametime_avg/(1000/144)*100).toFixed(2)}% ${frametime_avg.toFixed(4)}ms ${this.lazy_update ? "LAZY" : "FULL"}`
             },
-            () => `T: ${this.stats.tiles_rendered} P: ${this.map_tile_sprite_pool.length}`,
+            () => `T: ${this.stats.tiles_rendered} P: ${this.map_tile_sprite_pool.length} ${new Date(this.stats.updateTimestamp).toISOString()}`,
             () => `POS: ${Math.round(this.state.x)} ${Math.round(this.state.z)} ZOOM: ${this.state.zoom.toFixed(1)}`,
             () => `LOD: ${this._derived_lod} SF: ${Math.floor(this._derived_zoom * 100) / 100}`,
             () => `CHILDREN: ${Object.keys(this.children_cache).length}`,
@@ -189,7 +193,8 @@ class WorldMap {
             () => `GRID: S ${this.getGridSpacing()}`,
             () => `CLAIMS: [${this.stats.claims_rendered > 0 ? "HIGH" : "LOW" }] ${this.stats.claims_rendered}/${Object.keys(this.claims).length}`,
             () => `POINTER: ${this.pointer.onscreen} ${this.pointer.x} ${this.pointer.y} ${this.pointer.m1}`,
-            () => `HOVER: C ${this.stats.candidates}/${this.stats.quadtree_content} H: ${this.hovered_claim}`
+            () => `HOVER: C ${this.stats.candidates}/${this.stats.quadtree_content} H: ${this.hovered_claim}`,
+            () => `SEARCH: ${this.last_search.length} ${this.search_index}`
         ]
 
         if (this.debug) {
@@ -602,11 +607,11 @@ class WorldMap {
 
             claim_panel.style.display = ""
 
-            this.teleport({
-                x: claim.position.x,
-                z: claim.position.z,
-                zoom: 1
-            })
+            // this.teleport({
+            //     x: claim.position.x,
+            //     z: claim.position.z,
+            //     zoom: 1
+            // })
 
         } else {
             claim_panel.style.display = "none"
@@ -651,19 +656,49 @@ class WorldMap {
         })
 
         search_span.addEventListener('keydown', (e) => {
+            console.log(e)
+
             if (e.key == 'Enter') {
                 e.preventDefault()
                 search_span.innerText = ""
 
                 if (this.last_search.length > 0) {
-                    this.setFocusedClaim(this.last_search[this.last_search.length - 1])
+                    this.setFocusedClaim(this.last_search.at(-this.search_index - 1).claim)
                 }
+            }
+
+            if (e.key == 'Tab') {
+                e.preventDefault()
+                let cycle = Math.min(this.config.search_preview, this.last_search.length)
+
+                this.search_index = (this.search_index + cycle - 1) % cycle
+            }
+
+            if (e.key == 'ArrowUp') {
+                e.preventDefault()
+                let cycle = Math.min(this.config.search_preview, this.last_search.length)
+
+                this.search_index = (this.search_index + cycle + 1) % cycle
+            }
             
+            if (e.key == 'ArrowDown') {
+                e.preventDefault()
+                let cycle = Math.min(this.config.search_preview, this.last_search.length)
+
+                this.search_index = (this.search_index + cycle - 1) % cycle
+            }
+
+            if (e.key == 'Backspace' && search_span.innerText.length == 1) {
+                search_span.blur()
+                search_span.innerText = ""
+                this.updateSearch("")
             }
 
             if (e.key == "Escape") {
                 // What the fuck where they thinking when they named this
                 search_span.blur()
+                search_span.innerText = ""
+                this.updateSearch("")
             }
         })
 
@@ -814,32 +849,93 @@ class WorldMap {
 
 
     updateSearch(text) {
-        const children = []
-        const claims = []
+        const matches = []
 
-        for (const [id, claim] of Object.entries(this.claims)) {
-            const match = this.pullMatchingSubstring(claim.name, text)
+        if (text.length > 0) {
+            for (const [id, claim] of Object.entries(this.claims)) {
+                const name_match = this.pullMatchingSubstring(claim.name, text)
 
-            if (match !== false) {
-                const parent = document.createElement("span")
+                if (name_match !== false) {
+                    const parent = document.createElement("span")
 
-                parent.appendChild(document.createTextNode(match[0]))
-                
-                const match_span = document.createElement("span")
-                match_span.innerHTML = match[1]
-                parent.appendChild(match_span)
+                    parent.appendChild(document.createTextNode(name_match[0]))
+                    
+                    const match_span = document.createElement("span")
+                    match_span.innerHTML = name_match[1]
+                    parent.appendChild(match_span)
 
-                parent.appendChild(document.createTextNode(match[2]))
+                    parent.appendChild(document.createTextNode(name_match[2]))
 
-                children.push(parent)
-                claims.push(id)
+                    matches.push({
+                        score: 1 / claim.name.length * 10,
+                        claim: id,
+                        child: parent
+                    })
+                }
+
+                if (claim.owning_nation) {
+                    const nation_match = this.pullMatchingSubstring(claim.owning_nation, text)
+
+                    if (nation_match !== false) {
+                        const parent = document.createElement("span")
+
+                        parent.appendChild(document.createTextNode(claim.name + " ["))
+                        parent.appendChild(document.createTextNode(nation_match[0]))
+                        
+                        const match_span = document.createElement("span")
+                        match_span.innerHTML = nation_match[1]
+                        parent.appendChild(match_span)
+
+                        parent.appendChild(document.createTextNode(nation_match[2] + "]"))
+
+                        matches.push({
+                            score: 1 / claim.name.length + 1 / claim.owning_nation.length * 0.5,
+                            claim: id,
+                            child: parent
+                        })
+                    }
+                }
+
+                claim.players.forEach(name => {
+                    if (name == "<unknown>") return
+                    if (name == "...") return
+
+                    const player_match = this.pullMatchingSubstring(name, text)
+
+                    if (player_match !== false) {
+                        const parent = document.createElement("span")
+
+                        parent.appendChild(document.createTextNode(claim.name + " ["))
+                        parent.appendChild(document.createTextNode(player_match[0]))
+                        
+                        const match_span = document.createElement("span")
+                        match_span.innerHTML = player_match[1]
+                        parent.appendChild(match_span)
+
+                        parent.appendChild(document.createTextNode(player_match[2] + "]"))
+
+                        matches.push({
+                            score: 1 / claim.name.length + 1 / name.length * 0.75,
+                            claim: id,
+                            child: parent
+                        })
+                    }
+                })
             }
-
-            if (children.length > 10) break
         }
 
-        this.last_search = claims
-        search_results.replaceChildren(...children)
+        if (matches.length > 0) {
+            matches.sort((a, b) => a.score - b.score)
+
+            this.search_index = Math.min(this.search_index, this.config.search_preview)
+
+            matches.at(-this.search_index - 1).child.style.background = "rgb(255, 255, 255, 0.3)"
+        } else {
+            this.search_index = 0
+        }
+
+        this.last_search = matches
+        search_results.replaceChildren(...matches.map(x => x.child).slice(-this.config.search_preview))
     }
 
     rectanglesIntersect([[x1, y1], [x2, y2]], [[x3, y3], [x4, y4]]) {
@@ -952,7 +1048,8 @@ WorldMap.instance = new WorldMap({
     max_sprites: 200,
     claims_low_res: 4096,
     min_zoom: -50,
-    max_zoom: 50
+    max_zoom: 50,
+    search_preview: 10
 })
 await WorldMap.instance.init()
 globalThis.__PIXI_APP__ = WorldMap.instance.app
