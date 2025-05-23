@@ -603,12 +603,13 @@ class WorldMap {
             claim_panel_balance.innerHTML = `: $${claim.balance}`
 
             claim_panel_flag.src = "assets/flag_temp.png"
+            claim_panel_owner_model.src = ""
             claim_panel_owner_model.src = `https://mc-heads.net/body/${claim.players[0]}/left`
 
             claim_panel.style.display = ""
 
             // this.teleport({
-            //     x: claim.position.x,
+            //     x: claim.position.x,w
             //     z: claim.position.z,
             //     zoom: 1
             // })
@@ -656,8 +657,6 @@ class WorldMap {
         })
 
         search_span.addEventListener('keydown', (e) => {
-            console.log(e)
-
             if (e.key == 'Enter') {
                 e.preventDefault()
                 search_span.innerText = ""
@@ -699,6 +698,28 @@ class WorldMap {
                 search_span.blur()
                 search_span.innerText = ""
                 this.updateSearch("")
+            }
+        })
+
+        window.addEventListener("pointerdown", event => {
+            if (event.target) {
+                if (event.target.parentElement == search_results) {
+                    const id = event.target.id.split("_")[1]
+                    const claim = this.claims[id]
+
+                    this.setFocusedClaim(id)
+                    
+                    search_span.textContent = claim.name
+                    this.updateSearch(claim.name)
+                } else if (event.target.parentElement.parentElement == search_results) {
+                    const id = event.target.id.split("_")[1]
+                    const claim = this.claims[id]
+
+                    this.setFocusedClaim(id)
+                    
+                    search_span.textContent = claim.name
+                    this.updateSearch(claim.name)
+                }
             }
         })
 
@@ -858,6 +879,8 @@ class WorldMap {
                 if (name_match !== false) {
                     const parent = document.createElement("span")
 
+                    parent.id = `searchresult-claim-${claim.name}_${id}`
+
                     parent.appendChild(document.createTextNode(name_match[0]))
                     
                     const match_span = document.createElement("span")
@@ -878,6 +901,8 @@ class WorldMap {
 
                     if (nation_match !== false) {
                         const parent = document.createElement("span")
+
+                        parent.id = `searchresult-claim-${claim.name}-${claim.owning_nation}_${id}`
 
                         parent.appendChild(document.createTextNode(claim.name + " ["))
                         parent.appendChild(document.createTextNode(nation_match[0]))
@@ -904,6 +929,8 @@ class WorldMap {
 
                     if (player_match !== false) {
                         const parent = document.createElement("span")
+
+                        parent.id = `searchresult-claim-${claim.name}-${name}_${id}`
 
                         parent.appendChild(document.createTextNode(claim.name + " ["))
                         parent.appendChild(document.createTextNode(player_match[0]))
