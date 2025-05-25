@@ -73,7 +73,9 @@ class WorldMap {
         this.state = {
             x: 0,
             z: 0,
-            zoom: -20
+            zoom: -20,
+            selected_block : undefined,
+            map: undefined
         }
 
         this.textures = {}
@@ -114,6 +116,11 @@ class WorldMap {
                 parent_div.classList.add("map_option_selected")
             }
 
+            parent_div.addEventListener("click", event => {
+                this.update_map_ui(map.id)
+                this.load_map(map.id)
+            })
+
             children.push(parent_div)
         })
 
@@ -121,8 +128,14 @@ class WorldMap {
     }
 
     async load_map(id) {
+        this.state.map = id
         this.children_cache = {}
         this.textures = {}
+        this.lazy_update = false
+
+        this.map_tile_sprite_pool.forEach(sprite => {
+            sprite.visible = false
+        })
 
         const root_path = `static/maps/${id}`
         const depth = Math.floor(this.config.depth / 2)
@@ -133,9 +146,11 @@ class WorldMap {
 
             for (let x = -relative_depth; x <= relative_depth; x++) {
                 for (let z = -relative_depth; z <= relative_depth; z++) {
-                    promises.push(PIXI.Assets.load(`${root_path}/${lod}/${z}/${x}.png`).then(texture => {
-                        this.textures[`${lod}/${x}/${z}`] = texture
-                    }).catch(() => {}))
+                    if (id == this.state.map) {
+                        promises.push(PIXI.Assets.load(`${root_path}/${lod}/${z}/${x}.png`).then(texture => {
+                            this.textures[`${lod}/${x}/${z}`] = texture
+                        }).catch(() => {}))
+                    }
                 }
             }
             await Promise.all(promises)
@@ -210,6 +225,30 @@ class WorldMap {
         this.claim_low_res.anchor.x = 0.5
         this.claim_low_res.anchor.y = 0.5
 
+        this.block_selection = new PIXI.Graphics()
+        this.block_selection.name = "Block Selection"
+        this.block_selection.zIndex = 3
+        this.block_selection.blendMode = "multiply"
+
+        this.block_selection.moveTo(0, 0)
+            .lineTo(this.config.block_selection_stroke, 0)
+            .lineTo(this.config.block_selection_stroke, this.config.block_selection_stroke)
+            .lineTo(0, this.config.block_selection_stroke)
+            .closePath()
+            .stroke({ color: 0x777777, width: 2 })
+
+        this.block_hover = new PIXI.Graphics()
+        this.block_hover.name = "Block Hover"
+        this.block_hover.zIndex = 3
+        this.block_hover.blendMode = "multiply"
+
+        this.block_hover.moveTo(0, 0)
+            .lineTo(this.config.block_selection_stroke, 0)
+            .lineTo(this.config.block_selection_stroke, this.config.block_selection_stroke)
+            .lineTo(0, this.config.block_selection_stroke)
+            .closePath()
+            .fill({ color: 0xBBBBBB })
+
         let frametime_avg = 0
         let debug_lines = [
             () => `[DEBUG] Community Dynmap Reborn ${WorldMap.VERSION}`,
@@ -257,6 +296,8 @@ class WorldMap {
         this.app.stage.addChild(this.claim_high_res_group)
         this.app.stage.addChild(this.claim_low_res)
         this.app.stage.addChild(this.grid_graphics)
+        this.app.stage.addChild(this.block_selection)
+        this.app.stage.addChild(this.block_hover)
         this.app.stage.addChild(debug_container)
         
         this.app.ticker.add((ticker) => {
@@ -576,7 +617,7 @@ class WorldMap {
                         graphics.fill({
                             color: clr,
                             alpha: a
-                        }, path)
+                        })
                     }
 
                     graphics.stroke({
@@ -598,6 +639,34 @@ class WorldMap {
 
         if (!anyHovered) {
             this.hovered_claim = undefined
+        }
+
+        if (this._derived_lod == 0) {
+            this.block_hover.visible = true
+            
+            // TODO: cull offscreen
+
+            const block_scale = this._derived_zoom / this.config.block_selection_stroke
+            const hoveredBlockPos = this.toScreenSpace(pointer_world_pos.map(Math.floor))
+
+            this.block_hover.x = hoveredBlockPos[0]
+            this.block_hover.y = hoveredBlockPos[1]
+            this.block_hover.scale = block_scale
+            
+            if (this.state.selected_block) {
+                const selectedScreenPos = this.toScreenSpace([this.state.selected_block.x, this.state.selected_block.z])
+                
+                this.block_selection.x = selectedScreenPos[0]
+                this.block_selection.y = selectedScreenPos[1]
+                this.block_selection.scale = block_scale
+
+                this.block_selection.visible = true
+            } else {
+                this.block_selection.visible = false
+            }
+        } else {
+            this.block_selection.visible = false
+            this.block_hover.visible = false
         }
 
         this.stats.claims_rendered = claims_rendered
@@ -795,7 +864,28 @@ class WorldMap {
             }
         })
 
+        let block_pos_down = [0, 0]
+        window.addEventListener("pointerup", event => {
+            if (event.button == 0) {
+                const block_pos_up = this.toWorldSpace([event.clientX, event.clientY]).map(Math.floor)
+                if (block_pos_up[0] == block_pos_down[0] && block_pos_up[1] == block_pos_down[1]) {
+                    this.state.selected_block = {
+                        x: block_pos_down[0],
+                        z: block_pos_down[1]
+                    }
+                }
+            }
+
+            if (this.hovered_claim) {
+                this.setFocusedClaim(this.hovered_claim)
+            }
+        })
+
         window.addEventListener("pointerdown", event => {
+            if (event.button == 0) {
+                block_pos_down = this.toWorldSpace([event.clientX, event.clientY]).map(Math.floor)
+            }
+
             if (event.target) {
                 if (event.target.parentElement == search_results) {
                     const id = event.target.id.split("_")[1]
@@ -827,12 +917,6 @@ class WorldMap {
             this.pointer.x = event.clientX
             this.pointer.y = event.clientY
             this.pointer.hasMoved = true
-        })
-
-        window.addEventListener("pointerdown", event => {
-            if (this.hovered_claim) {
-                this.setFocusedClaim(this.hovered_claim)
-            }
         })
 
         document.addEventListener("mouseenter", event => {
@@ -1169,7 +1253,8 @@ WorldMap.instance = new WorldMap({
     min_zoom: -50,
     max_zoom: 50,
     search_preview: 10,
-    initial_map: "bluemap"
+    initial_map: "bluemap",
+    block_selection_stroke: 16
 })
 await WorldMap.instance.init()
 globalThis.__PIXI_APP__ = WorldMap.instance.app

@@ -117,7 +117,7 @@ textarea:focus, input:focus{
     flex-direction: column;
     overflow: hidden;
     z-index: 1;
-    height: calc(220px);
+    height: calc(300px);
 }
 
 #selector_collapse {
@@ -134,6 +134,12 @@ textarea:focus, input:focus{
 
 #selector_collapse:hover {
     background: rgba(92, 141, 246, 0.7);
+}
+
+#claim_button_container {
+    display: flex;
+    flex-direction: row;
+    justify-items: left;
 }
 
 #map_selector {
