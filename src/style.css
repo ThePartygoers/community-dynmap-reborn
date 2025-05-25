@@ -1,3 +1,7 @@
+* {
+    user-select: none;
+}
+
 :root {
     --color-premiere-bg: #232323;
     --color-premiere-panel: #2D2D2D;
@@ -105,6 +109,71 @@ textarea:focus, input:focus{
 	gap: 3px;
 }
 
+.left_panel {
+    top: var(--spacing-md);
+    left: var(--spacing-md);
+    position: absolute;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    z-index: 1;
+    height: calc(220px);
+}
+
+#selector_collapse {
+    background: rgba(58, 58, 58, 0.8);
+    transition: background 0.2s ease;
+    border: 1px solid rgba(58, 58, 58, 0.6);
+    padding: var(--spacing-sm);
+    position: absolute;
+    right: 0;
+    border-radius: 0;
+    border-bottom-left-radius: 4px;
+    border-bottom-right-radius: 4px;
+}
+
+#selector_collapse:hover {
+    background: rgba(92, 141, 246, 0.7);
+}
+
+#map_selector {
+    display: block;
+    position: absolute;
+    z-index: -1;
+    transition: margin-top 0.5s ease;
+    max-width: 70%;
+}
+
+#map_selector > .map_option {
+    padding: var(--spacing-sm);
+    border-bottom: 1px solid rgba(58, 58, 58, 0.6);
+    color: var(--color-premiere-text-dim);
+}
+
+#map_selector > .map_option:hover, #map_selector > .map_option_selected {
+    background: rgba(92, 141, 246, 0.1);
+    transition: background 0.2s ease;
+}
+
+#map_selector > .map_option_selected {
+    background: rgba(92, 141, 246, 0.3);
+}
+
+#map_selector > .map_option > p {
+    display: none;
+    margin: 0;
+    max-width: 85%;
+    font-size: small;
+}
+
+#map_selector > .map_option:hover > p, #map_selector > .map_option_selected > p {
+    display: inherit;
+}
+
+#map_selector > .map_option_selected {
+    color: white;
+}
+
 .search_panel {
     bottom: var(--spacing-md);
     right: var(--spacing-md);
@@ -148,18 +217,20 @@ textarea:focus, input:focus{
     color: var(--color-premiere-accent2)
 }
 
-#claim_panel {
+.panel_content {
     border: 1px solid rgba(58, 58, 58, 0.6);
     background: linear-gradient(135deg, rgba(26, 26, 26, 0.95), rgba(35, 35, 35, 0.85));
 }
 
-#claim_panel > table {
+.panel_content > table {
     width: 100%;
     text-align: center;
     border-collapse: collapse;
+    max-height: 100%;
+    overflow-y: auto;
 }
 
-#claim_panel > table th {
+.panel_content > table th {
     background: linear-gradient(135deg, rgba(15, 15, 15, 0.9), rgba(26, 26, 26, 0.8));
     color: var(--color-premiere-accent);
     font-weight: 600;
@@ -170,15 +241,20 @@ textarea:focus, input:focus{
     letter-spacing: 0.5px;
 }
 
-#claim_panel > table td {
+.panel_content > table td {
     padding: var(--spacing-sm);
     border-bottom: 1px solid rgba(58, 58, 58, 0.3);
     color: var(--color-premiere-text-dim);
 }
 
-#claim_panel > table tr:hover {
+.panel_content > table tr:hover {
     background: rgba(92, 141, 246, 0.1);
     transition: background 0.2s ease;
+}
+
+#map_selector {
+    display: flex;
+    flex-direction: column;
 }
 
 .nationheader {
@@ -265,7 +341,7 @@ textarea:focus, input:focus{
     justify-content: right;
 }
 
-.coordinates {
+.data_panel {
     font-size: var(--font-size-base);
     display: flex;
     font-weight: 600;
@@ -277,11 +353,12 @@ textarea:focus, input:focus{
         inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
-.coordinates > span {
+.data_panel > span {
     padding: var(--spacing-sm);
 }
 
-.coordinates > label {
+.data_panel > label {
+    padding: var(--spacing-sm);
     display: flex;
     align-items: center;
     margin-top: -1px;
@@ -293,7 +370,7 @@ textarea:focus, input:focus{
     padding-right: var(--spacing-sm);
 }
 
-.coordinates > label > input {
+.data_panel > label > input {
     background: transparent;
     font-size: var(--font-size-base);
     border: 0px;
@@ -304,7 +381,13 @@ textarea:focus, input:focus{
     min-width: 3rem;
 }
 
-.coordinates > label > input:focus {
+.data_panel > label > input:focus {
     color: var(--color-premiere-accent);
     text-shadow: 0 0 8px rgba(92, 141, 246, 0.3);
+}
+
+@media only screen and (max-width: 480px) {
+    #coordinates_label {
+        display: none;
+    }
 }

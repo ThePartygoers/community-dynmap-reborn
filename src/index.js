@@ -11,6 +11,8 @@ const claim_panel_flag = document.getElementById("claim_flag")
 const claim_panel_owner_model = document.getElementById("claim_owner_model")
 const claim_panel_players = document.getElementById("claim_players")
 
+const map_selector = document.getElementById("map_selector")
+
 function lerp(a, b, alpha) {
     return a + (b - a) * alpha
 }
@@ -94,6 +96,30 @@ class WorldMap {
         this.setFocusedClaim(undefined)
     }
 
+    async update_map_ui(id) {
+        let children = []
+        this.meta.maps.forEach(map => {
+            const parent_div = document.createElement("div")
+
+            const span = document.createElement("span")
+            span.innerText = map.name
+            parent_div.appendChild(span)
+
+            const p = document.createElement("p")
+            p.innerText = map.desc
+            parent_div.appendChild(p)
+
+            parent_div.classList.add("map_option")
+            if (id == map.id) {
+                parent_div.classList.add("map_option_selected")
+            }
+
+            children.push(parent_div)
+        })
+
+        map_selector.replaceChildren(...children)
+    }
+
     async load_map(id) {
         this.children_cache = {}
         this.textures = {}
@@ -116,11 +142,14 @@ class WorldMap {
         }
     }
 
-    async load_claims() {
-        const response = await fetch("static/claims.json")
-        const decoded = await response.json()
-        this.claims = decoded.claims
-        this.stats.updateTimestamp = decoded.timestamp * 1000
+    async pullData() {
+        const meta_response = await fetch("static/meta.json")
+        this.meta = await meta_response.json()
+
+        const claims_response = await fetch("static/claims.json")
+        const decoded_claims = await claims_response.json()
+        this.claims = decoded_claims.claims
+        this.stats.updateTimestamp = decoded_claims.timestamp * 1000
 
         const lowResGraphics = new PIXI.Graphics()
 
@@ -158,8 +187,10 @@ class WorldMap {
 
         document.body.appendChild(this.app.canvas)
 
-        this.load_map("bluemap")
-        this.load_claims()
+        this.load_map(this.config.initial_map)
+        this.pullData().then(() => {
+            this.update_map_ui("bluemap")
+        })
         this.registerEvents()
 
         const debug_container = new PIXI.Container()
@@ -646,7 +677,7 @@ class WorldMap {
                 const tier_label = document.createElement("td")
                 tier_label.innerText = "unknown"
                 row.appendChild(tier_label)
-
+                
                 children.push(row)
 
                 index++
@@ -840,7 +871,6 @@ class WorldMap {
         })
 
         window.addEventListener("mouseup", event => {
-            if (event.target != this.app.canvas) return
             dragging = false
 
             this.lazy_update = false
@@ -907,7 +937,6 @@ class WorldMap {
 		})
 
         window.addEventListener("touchend", event => {
-            if (event.target != this.app.canvas) return
             this.pointer.onscreen = false
 
             zooming = false
@@ -1139,7 +1168,8 @@ WorldMap.instance = new WorldMap({
     claims_low_res: 4096,
     min_zoom: -50,
     max_zoom: 50,
-    search_preview: 10
+    search_preview: 10,
+    initial_map: "bluemap"
 })
 await WorldMap.instance.init()
 globalThis.__PIXI_APP__ = WorldMap.instance.app

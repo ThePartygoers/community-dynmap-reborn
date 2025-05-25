@@ -11,10 +11,35 @@
     <script src="https://pixijs.download/release/pixi.min.js"></script>
 </head>
 <body>
+    <div class="left_panel">
+        <div class="data_panel panel">
+            <span>Dynmap Reborn</span>
+            <label>
+                <span>Map: Bluemap</span>
+            </label>
+        </div>
+        <div>
+            <div id="map_selector" class="panel_content">
+                <div class="map_option map_option_selected">
+                    <span>Bluemap</span>
+                    <p>Generated from the official bluemap</p>
+                </div>
+                <div class="map_option">
+                    <span>Bluemap Heightmap</span>
+                    <p>Generated from the official bluemap</p>
+                </div>
+                <div class="map_option">
+                    <span>Bluemap Lightmap</span>
+                    <p>Generated from the official bluemap</p>
+                </div>
+            </div>
+            <button class="fancy_collapse" id="selector_collapse">Collapse</button>
+        </div>
+    </div>
     <div class="right_panel">
         <div class="info">
-            <div class="panel coordinates">
-                <span>Coordinates</span>
+            <div class="panel data_panel">
+                <span id="coordinates_label">Coordinates</span>
                 <label>
                     <span>X:</span>
                     <input type="number" name="X" id="ui_x" maxlength="10">
@@ -25,7 +50,7 @@
                 </label>
             </div>
         </div>
-        <div class="panel" id="claim_panel">
+        <div class="panel panel_content" id="claim_panel">
             <div class="panel nationheader">
                 <div>
                     <h1 id="claim_name">Nation Name</h1>
@@ -72,6 +97,7 @@
         </div>
     </div>
 
+    <script src="collapsable.js"></script>
     <script type="module" src="index.js"></script>
 </body>
 </html>

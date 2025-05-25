@@ -194,10 +194,8 @@ def main():
     with open(OUTPUT + "/" + "claims.json", "w") as fh:
         fh.write(json.dumps({
             "claims": final_output,
-            "timestamp": math.floor(time.time())
+            "timestamp": math.floor(time.time() * 1000)
         }))
-
-    exit(0)
 
     # Download tiles
     try:
@@ -277,6 +275,31 @@ def main():
 
     shm_light.close()
     shm_light.unlink()
+
+    with open(OUTPUT + "/" + "meta.json", "w") as fh:
+        fh.write(json.dumps({
+            "maps": [
+                {
+                    "id": "bluemap",
+                    "name": "Bluemap",
+                    "desc": "Generated from the official Stoneworks Bluemap",
+                    "timestamp": math.floor(time.time() * 1000)
+                },
+                {
+                    "id": "bluemap_height",
+                    "name": "Bluemap Heightmap",
+                    "desc": "Generated from the official Stoneworks Bluemap",
+                    "timestamp": math.floor(time.time() * 1000)
+                },
+                {
+                    "id": "bluemap_light",
+                    "name": "Bluemap Lightmap",
+                    "desc": "Generated from the official Stoneworks Bluemap",
+                    "timestamp": math.floor(time.time() * 1000)
+                }
+            ],
+            "timestamp": math.floor(time.time())
+        }))
 
 if __name__ == "__main__":
     start = time.time()
