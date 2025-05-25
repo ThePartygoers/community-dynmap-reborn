@@ -11,6 +11,22 @@ const claim_panel_flag = document.getElementById("claim_flag")
 const claim_panel_owner_model = document.getElementById("claim_owner_model")
 const claim_panel_players = document.getElementById("claim_players")
 
+// I wouldn't dare touch your JS code...
+// just an example to prevent map scroll when scrollling in the claim panel
+claim_panel.addEventListener('wheel', (e) => {
+    const { scrollTop, scrollHeight, clientHeight } = claim_panel;
+    const delta = e.deltaY;
+    if (delta < 0 && scrollTop === 0) {
+        e.preventDefault();
+        return;
+    }
+    if (delta > 0 && scrollTop + clientHeight >= scrollHeight) {
+        e.preventDefault();
+        return;
+    }
+    e.stopPropagation();
+}, { passive: false });
+
 const map_selector = document.getElementById("map_selector")
 
 function lerp(a, b, alpha) {
