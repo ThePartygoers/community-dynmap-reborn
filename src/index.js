@@ -1187,7 +1187,7 @@ class WorldMap {
                             zoom: 6
                         })
 
-                        this.focused_claim = claim_id
+                        this.setFocusedClaim(claim_id)
 
                         this.force_claim_redraw = true
                     }
