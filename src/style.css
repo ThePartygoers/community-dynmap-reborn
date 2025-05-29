@@ -85,7 +85,7 @@ textarea:focus, input:focus{
         0 4px 16px rgba(0, 0, 0, 0.4),
         inset 0 1px 0 rgba(255, 255, 255, 0.1);
     position: relative;
-    overflow: hidden;
+
 }
 
 .panel::before {
@@ -106,6 +106,8 @@ textarea:focus, input:focus{
     display: flex;
     flex-direction: column;
     max-width: 420px;
+	gap: 3px;
+    max-height: calc(100vh - var(--spacing-md) * 2);
 }
 
 .left_panel {
@@ -243,14 +245,15 @@ textarea:focus, input:focus{
 .panel_content {
     border: 1px solid rgba(58, 58, 58, 0.6);
     background: linear-gradient(135deg, rgba(26, 26, 26, 0.95), rgba(35, 35, 35, 0.85));
+	max-height: 540px;
+	overflow-y: auto;
+	overflow-x: hidden;
 }
 
 .panel_content > table {
     width: 100%;
     text-align: center;
     border-collapse: collapse;
-    max-height: 100%;
-    overflow-y: auto;
 }
 
 .panel_content > table th {
@@ -381,6 +384,7 @@ textarea:focus, input:focus{
 }
 
 .data_panel > label {
+	max-width: 90px;
     padding: var(--spacing-sm);
     display: flex;
     align-items: center;
