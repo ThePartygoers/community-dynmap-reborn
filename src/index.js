@@ -11,6 +11,11 @@ const claim_panel_flag = document.getElementById("claim_flag")
 const claim_panel_owner_model = document.getElementById("claim_owner_model")
 const claim_panel_players = document.getElementById("claim_players")
 
+const claim_button_container = document.getElementById("claim_button_container")
+const claim_teleport = document.getElementById("claim_teleport")
+const claim_deselect = document.getElementById("claim_deselect")
+const claim_share = document.getElementById("claim_share")
+
 const map_selector = document.getElementById("map_selector")
 
 function lerp(a, b, alpha) {
@@ -48,9 +53,9 @@ class WorldMap {
         this.lazy_update = false
 
         this.claims = {}
+        this.claim_name_lookup = {}
         this.claim_bounds = {}
         this.claim_path = {}
-        this.claim_points = {}
         this.claim_graphics = {}
         this.force_claim_redraw = false
         this.claim_quadtree = new Quadtree({
@@ -77,6 +82,8 @@ class WorldMap {
             selected_block : undefined,
             map: undefined
         }
+
+        this.data_promise = undefined
 
         this.textures = {}
 
@@ -128,6 +135,7 @@ class WorldMap {
     }
 
     async load_map(id) {
+        console.log("Loading", id)
         this.state.map = id
         this.children_cache = {}
         this.textures = {}
@@ -155,6 +163,8 @@ class WorldMap {
             }
             await Promise.all(promises)
         }
+
+        this.saveParams()
     }
 
     async pullData() {
@@ -171,6 +181,7 @@ class WorldMap {
         const scaleFactor = this.config.claims_low_res / (this.config.depth * this.config.tile_size)
 
         for (const [id, claim] of Object.entries(this.claims)) {
+            this.claim_name_lookup[claim.name] = id
             let low_res_space_points = []
 
             claim.shape.forEach(point => {
@@ -203,7 +214,7 @@ class WorldMap {
         document.body.appendChild(this.app.canvas)
 
         this.load_map(this.config.initial_map)
-        this.pullData().then(() => {
+        this.data_promise = this.pullData().then(() => {
             this.update_map_ui("bluemap")
         })
         this.registerEvents()
@@ -256,7 +267,7 @@ class WorldMap {
                 frametime_avg = lerp(frametime_avg, this.stats.frametime, 0.1)
                 return `FPS: ${this.app.ticker.FPS.toFixed(1)} (VSYNC) ${(frametime_avg/(1000/144)*100).toFixed(2)}% ${frametime_avg.toFixed(4)}ms ${this.lazy_update ? "LAZY" : "FULL"}`
             },
-            () => `T: ${this.stats.tiles_rendered} P: ${this.map_tile_sprite_pool.length} ${new Date(this.stats.updateTimestamp).toISOString()}`,
+            () => `${this.state.map} T: ${this.stats.tiles_rendered} P: ${this.map_tile_sprite_pool.length} ${new Date(this.stats.updateTimestamp).toISOString()}`,
             () => `POS: ${Math.round(this.state.x)} ${Math.round(this.state.z)} ZOOM: ${this.state.zoom.toFixed(1)}`,
             () => `LOD: ${this._derived_lod} SF: ${Math.floor(this._derived_zoom * 100) / 100}`,
             () => `CHILDREN: ${Object.keys(this.children_cache).length}`,
@@ -310,6 +321,8 @@ class WorldMap {
 
             this.clock += ticker.deltaTime
         })
+
+        this.loadParams()
     }
 
     tick() {
@@ -680,7 +693,7 @@ class WorldMap {
     }
 
     teleport(state) {
-        this.state = state
+        Object.assign(this.state, state)
         this.lazy_update = false
         this.force_claim_redraw = true
     }
@@ -708,6 +721,7 @@ class WorldMap {
             claim_panel_owner_model.src = `https://mc-heads.net/body/${claim.players[0]}/left`
 
             claim_panel.style.display = ""
+            claim_button_container.style.display = ""
 
             const header = document.createElement("tr")
             const player_header = document.createElement("th")
@@ -779,6 +793,8 @@ class WorldMap {
 
         } else {
             claim_panel.style.display = "none"
+            claim_button_container.style.display = "none"
+
         }
     }
 
@@ -879,6 +895,7 @@ class WorldMap {
             if (this.hovered_claim) {
                 this.setFocusedClaim(this.hovered_claim)
             }
+            this.saveParams()
         })
 
         window.addEventListener("pointerdown", event => {
@@ -1028,6 +1045,43 @@ class WorldMap {
 
             this.lazy_update = false
 		})
+
+        claim_deselect.addEventListener("click", event => {
+            this.setFocusedClaim(undefined)
+        })
+
+        claim_teleport.addEventListener("click", event => {
+            const claim = this.claims[this.focused_claim]
+
+            if (claim) {
+                this.state.x = claim.position.x
+                this.state.z = claim.position.z
+                this.state.zoom = 6
+            }
+
+            this.saveParams()
+        })
+
+        claim_share.addEventListener("click", event => {
+            const claim = this.claims[this.focused_claim]
+
+            const prev_content = claim_share.innerHTML
+
+            if (claim) {
+                const url = new URL(window.location)
+                url.search = ""
+
+                url.searchParams.set("claim", claim.name)
+                
+                navigator.clipboard.writeText(url.toString())
+
+                claim_share.innerHTML = "Copied"
+
+                setTimeout(500, () => {
+                    claim_share.innerHTML = prev_content
+                })
+            }
+        })
     }
 
     pullMatchingSubstring(str, substring) {
@@ -1044,6 +1098,88 @@ class WorldMap {
         ]
     }
 
+    saveParams() {
+        const url = new URL(window.location)
+        
+        url.search = ""
+
+        url.searchParams.set("s", [
+            Math.floor(this.state.x),
+            Math.floor(this.state.z),
+            Math.floor(this.state.zoom)
+        ].join("_"))
+
+        if (this.state.map != "undefined") {
+            url.searchParams.set("map", this.state.map)
+        }
+
+        window.history.replaceState({}, '', url)
+    }
+
+    loadParams() {
+        const params = new URLSearchParams(window.location.search);
+
+        const state_updates = {
+            "s": [s => s.split("_"), s => {
+                
+                if (s.includes("NaN")) return
+
+                if (s.length == 3) {
+                    this.teleport({
+                        x: parseInt(s[0]),
+                        z: parseInt(s[1]),
+                        zoom: parseInt(s[2])
+                    })
+                }
+            }],
+            "map": [map => map, map => {
+                this.data_promise.then(() => {
+                    if (this.meta.maps[map]) {
+                        this.load_map(map)
+                        this.update_map_ui(map)
+                    }
+                })
+            }]
+        }
+
+        for (const [key, [transformer, update]] of Object.entries(state_updates)) {
+            const v = params.get(key)
+
+            if (v == undefined) continue
+
+            try {
+                const transformed_value = transformer(v)
+
+                update(transformed_value)
+            } catch (e) {
+                console.warn(`Failed to load parameter ${key} "${params.get(key)}"\n`, e)
+            }
+        }
+
+        if (params.has("claim")) {
+            this.data_promise.then(() => {
+                const claim_name = params.get("claim")
+                const claim_id = this.claim_name_lookup[claim_name]
+                if (claim_id) {
+                    const claim = this.claims[claim_id]
+                    
+                    if (claim) {
+                        this.teleport({
+                            x: claim.position.x,
+                            z: claim.position.z,
+                            zoom: 6
+                        })
+
+                        this.focused_claim = claim_id
+
+                        this.force_claim_redraw = true
+                    }
+                }
+            })
+        }
+
+        this.saveParams()
+    }
 
     updateSearch(text) {
         const matches = []
@@ -1223,7 +1359,7 @@ class WorldMap {
 
         return [
             (wx - this.state.x) * this._derived_zoom + halfWidth,
-            (wz - this.state.z ) * this._derived_zoom + halfHeight
+            (wz - this.state.z) * this._derived_zoom + halfHeight
         ]
     }
 

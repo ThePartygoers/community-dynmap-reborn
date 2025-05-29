@@ -106,7 +106,6 @@ textarea:focus, input:focus{
     display: flex;
     flex-direction: column;
     max-width: 420px;
-	gap: 3px;
 }
 
 .left_panel {
@@ -136,10 +135,28 @@ textarea:focus, input:focus{
     background: rgba(92, 141, 246, 0.7);
 }
 
+#claim_panel {
+    margin-top: 3px;
+}
+
 #claim_button_container {
     display: flex;
     flex-direction: row;
     justify-items: left;
+    gap: 3px;
+}
+
+#claim_button_container > button {
+    background-color: rgba(35, 35, 35, 0.9);
+    border-bottom-left-radius: var(--spacing-sm);
+    border-bottom-right-radius: var(--spacing-sm);
+    padding: var(--spacing-xs);
+    border: 0;
+    flex-grow: 1;
+}
+
+#claim_button_container > button:hover {
+    background-color: rgba(35, 35, 35, 0.7);
 }
 
 #map_selector {
