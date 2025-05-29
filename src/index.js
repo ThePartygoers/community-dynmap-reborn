@@ -24,7 +24,7 @@ function lerp(a, b, alpha) {
 
 class WorldMap {
 
-    static VERSION = "v0.1.0"
+    static VERSION = "v1.0.0"
 
     constructor(config) {
         this.config = config
@@ -260,6 +260,25 @@ class WorldMap {
             .closePath()
             .fill({ color: 0xBBBBBB })
 
+        
+        this.tooltip_containter = new PIXI.Container()
+        this.tooltip_containter.name = "Tooltip"
+        this.tooltip_containter.zIndex = 10
+
+        this.tooltip_text = new PIXI.HTMLText({
+            text: "<strong>0 0</strong>",
+            style: {
+                fill: "#E0E0E0",
+                fontFamily: "Segoe UI, SF Pro Display, -apple-system, BlinkMacSystemFont, Roboto, Oxygen, Ubuntu, Cantarell, sans-serif",
+                fontSize: "smaller"
+            }
+        })
+        this.tooltip_text.x = 8
+        this.tooltip_text.y = 4
+        this.tooltip_text.zIndex = 10
+
+        this.tooltip_containter.addChild(this.tooltip_text)
+
         let frametime_avg = 0
         let debug_lines = [
             () => `[DEBUG] Community Dynmap Reborn ${WorldMap.VERSION}`,
@@ -309,6 +328,7 @@ class WorldMap {
         this.app.stage.addChild(this.grid_graphics)
         this.app.stage.addChild(this.block_selection)
         this.app.stage.addChild(this.block_hover)
+        this.app.stage.addChild(this.tooltip_containter)
         this.app.stage.addChild(debug_container)
         
         this.app.ticker.add((ticker) => {
@@ -487,6 +507,13 @@ class WorldMap {
         }
 
         this.stats.candidates = pointer_candidates.size
+
+        this.tooltip_containter.x = this.pointer.x + 8
+        this.tooltip_containter.y = this.pointer.y + 4
+
+        if (!this.lazy_update) {
+            this.tooltip_text.text = `<strong>${Math.floor(pointer_world_pos[0])} ${Math.floor(pointer_world_pos[1])}</strong>`
+        }
 
         let claims_rendered = 0
         let anyHovered = this.lazy_update
