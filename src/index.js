@@ -1082,6 +1082,23 @@ class WorldMap {
                 })
             }
         })
+
+        claim_panel.addEventListener('wheel', (e) => {
+            const { scrollTop, scrollHeight, clientHeight } = claim_panel
+            const delta = e.deltaY
+
+            if (delta < 0 && scrollTop === 0) {
+                e.preventDefault()
+                return
+            }
+
+            if (delta > 0 && scrollTop + clientHeight >= scrollHeight) {
+                e.preventDefault()
+                return
+            }
+
+            e.stopPropagation()
+        }, { passive: false })
     }
 
     pullMatchingSubstring(str, substring) {
