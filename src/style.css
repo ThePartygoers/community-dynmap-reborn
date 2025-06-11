@@ -38,6 +38,8 @@
     --laptop: 992px;
     --desktop: 1200px;
 
+    --dyn-search-text: "Start Typing to search by claim, nation or player";
+
     font-family: Segoe UI, SF Pro Display, -apple-system, BlinkMacSystemFont, Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
     line-height: 1.5;
     font-weight: 400;
@@ -53,6 +55,7 @@ body, html {
     padding: 0;
     height: 100%;
     overflow: hidden;
+    touch-action: none
 }
 
 input::-webkit-outer-spin-button,
@@ -106,7 +109,6 @@ textarea:focus, input:focus{
     display: flex;
     flex-direction: column;
     max-width: 420px;
-	gap: 3px;
     max-height: calc(100vh - var(--spacing-md) * 2);
 }
 
@@ -199,9 +201,36 @@ textarea:focus, input:focus{
     color: white;
 }
 
+#context_menu {
+    position: fixed;
+    display: none;
+}
+
+#context_menu > ul {
+    padding: 0;
+    list-style: none;
+    background: linear-gradient(135deg, rgba(26, 26, 26, 0.95), rgba(35, 35, 35, 0.85));
+}
+
+#context_menu > ul > li {
+    padding: var(--spacing-xs);
+    background: linear-gradient(45deg, 
+        rgba(92, 141, 246, 0.05) 0%, 
+        transparent 30%, 
+        transparent 70%, 
+        rgba(92, 141, 246, 0.05) 100%);
+    border-top: 1px solid rgba(92, 141, 246, 0.3);
+}
+
+#context_menu > ul > li:hover {
+    background: rgba(92, 141, 246, 0.1);
+    transition: background 0.2s ease;
+}
+
 .search_panel {
     bottom: var(--spacing-md);
     right: var(--spacing-md);
+    margin-left: var(--spacing-md);
     position: absolute;
     display: flex;
     flex-direction: column;
@@ -238,7 +267,7 @@ textarea:focus, input:focus{
 }
 
 .search_panel > .search_bar > span:empty::before {
-    content: "Start Typing to search by claim, nation or player";
+    content: var(--dyn-search-text);
     color: var(--color-premiere-accent2)
 }
 
@@ -416,5 +445,38 @@ textarea:focus, input:focus{
 @media only screen and (max-width: 480px) {
     #coordinates_label {
         display: none;
+    }
+
+    .left_panel {
+        display: none;
+    }
+
+    .right_panel {
+        width: 100%;
+        left: 0;
+        right: 0;
+        align-items: flex-end;
+        max-width: none;
+    }
+
+    #claim_panel {
+        width: 100%;
+    }
+
+    .info {
+        justify-content: right;
+        width: fit-content;
+    }
+
+    .data_panel {
+        right: 0;
+    }
+
+    #claim_button_container {
+        width: 100%;
+    }
+
+    #claim_panel {
+        max-height: 300px;
     }
 }

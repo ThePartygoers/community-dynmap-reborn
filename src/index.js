@@ -1,3 +1,5 @@
+import { Annotations, RectangleAnnotation } from "./annotate.js"
+
 const x_input = document.getElementById("ui_x")
 const z_input = document.getElementById("ui_z")
 const search_span = document.getElementById("search_span")
@@ -17,6 +19,10 @@ const claim_deselect = document.getElementById("claim_deselect")
 const claim_share = document.getElementById("claim_share")
 
 const map_selector = document.getElementById("map_selector")
+
+const context_menu = document.getElementById("context_menu")
+const context_copy = document.getElementById("context_copy")
+const context_copy_link = document.getElementById("context_copy_link")
 
 function lerp(a, b, alpha) {
     return a + (b - a) * alpha
@@ -39,6 +45,10 @@ class WorldMap {
 
         this.claim_high_res_group = new PIXI.Container({ isRenderGroup: true })
         this.claim_high_res_group.name = "Claim HR"
+
+        this.annotation_layer = new PIXI.Container({ isRenderGroup: true })
+        this.annotation_layer.name = "Annotation"
+
 
         this.map_tile_sprite_pool = []
         this.children_cache = {}
@@ -86,6 +96,8 @@ class WorldMap {
         this.data_promise = undefined
 
         this.textures = {}
+        
+        this.annotations = []
 
         this._last_candidates = new Set()
 
@@ -100,7 +112,7 @@ class WorldMap {
         this.hovered_claim = undefined
         this.focused_claim = undefined
 
-        this.debug = true
+        this.debug = false
 
         this.setFocusedClaim(undefined)
     }
@@ -135,7 +147,6 @@ class WorldMap {
     }
 
     async load_map(id) {
-        console.log("Loading", id)
         this.state.map = id
         this.children_cache = {}
         this.textures = {}
@@ -268,7 +279,7 @@ class WorldMap {
         this.tooltip_text = new PIXI.HTMLText({
             text: "<strong>0 0</strong>",
             style: {
-                fill: "#E0E0E0",
+                fill: "#FFFFFF",
                 fontFamily: "Segoe UI, SF Pro Display, -apple-system, BlinkMacSystemFont, Roboto, Oxygen, Ubuntu, Cantarell, sans-serif",
                 fontSize: "smaller"
             }
@@ -276,6 +287,9 @@ class WorldMap {
         this.tooltip_text.x = 8
         this.tooltip_text.y = 4
         this.tooltip_text.zIndex = 10
+
+        this.tooltip_text.style.addOverride('text-shadow: 2px 2px 4px rgba(0,0,0,0.5)');
+
 
         this.tooltip_containter.addChild(this.tooltip_text)
 
@@ -329,6 +343,7 @@ class WorldMap {
         this.app.stage.addChild(this.block_selection)
         this.app.stage.addChild(this.block_hover)
         this.app.stage.addChild(this.tooltip_containter)
+        this.app.stage.addChild(this.annotation_layer)
         this.app.stage.addChild(debug_container)
         
         this.app.ticker.add((ticker) => {
@@ -343,6 +358,25 @@ class WorldMap {
         })
 
         this.loadParams()
+
+        if (window.matchMedia('(max-width: 480px)').matches)  {
+            document.body.style.setProperty("--dyn-search-text", "'Search by claim, nation or player'")
+        }
+
+        // TEMP
+
+        const annotations = this.createAnnotations()
+        annotations.addAnnotation(new RectangleAnnotation([100, 100], [110, 110]))
+    }
+
+    createAnnotations() {
+        const annotation = new Annotations(this)
+
+        this.annotation_layer.addChild(annotation.container)
+
+        this.annotations.push(annotation)
+
+        return annotation
     }
 
     tick() {
@@ -512,7 +546,7 @@ class WorldMap {
         this.tooltip_containter.y = this.pointer.y + 4
 
         if (!this.lazy_update) {
-            this.tooltip_text.text = `<strong>${Math.floor(pointer_world_pos[0])} ${Math.floor(pointer_world_pos[1])}</strong>`
+            this.tooltip_text.text = `<strong>${Math.floor(pointer_world_pos[0])} ${Math.floor(pointer_world_pos[1])}</strong>  `
         }
 
         let claims_rendered = 0
@@ -646,7 +680,7 @@ class WorldMap {
                     }
                 
                     graphics.clear()
-                    graphics.path(path)
+                    graphics.path(path, new PIXI.Matrix(1, 0, 0, 1, 100, 100))
                     graphics.blendMode = blend
                     
                     if (this.state.zoom < 10) {
@@ -669,8 +703,8 @@ class WorldMap {
 
                 claims_rendered++
                 
-                graphics.x = bounds[0][0]
-                graphics.y = bounds[0][1]
+                graphics.x = bounds[0][0] + this._derived_zoom / 2
+                graphics.y = bounds[0][1] + this._derived_zoom / 2
                 graphics.width = (bounds[1][0] - bounds[0][0])
                 graphics.height = (bounds[1][1] - bounds[0][1])
                 graphics.visible = true
@@ -680,6 +714,8 @@ class WorldMap {
         if (!anyHovered) {
             this.hovered_claim = undefined
         }
+
+        this.annotations.forEach(annotation => annotation.tick(screenWidth, screenHeight))
 
         if (this._derived_lod == 0) {
             this.block_hover.visible = true
@@ -909,13 +945,18 @@ class WorldMap {
 
         let block_pos_down = [0, 0]
         window.addEventListener("pointerup", event => {
-            if (event.button == 0) {
+            if (event.button == 2) {
                 const block_pos_up = this.toWorldSpace([event.clientX, event.clientY]).map(Math.floor)
                 if (block_pos_up[0] == block_pos_down[0] && block_pos_up[1] == block_pos_down[1]) {
                     this.state.selected_block = {
                         x: block_pos_down[0],
                         z: block_pos_down[1]
                     }
+
+                    context_menu.style.display = "block"
+                    context_menu.style.left = `${event.clientX + 2}px`
+                    context_menu.style.top = `${event.clientY + 2}px`
+                    event.preventDefault()
                 }
             }
 
@@ -926,27 +967,30 @@ class WorldMap {
         })
 
         window.addEventListener("pointerdown", event => {
-            if (event.button == 0) {
+            if (event.button == 2) {
                 block_pos_down = this.toWorldSpace([event.clientX, event.clientY]).map(Math.floor)
             }
 
             if (event.target) {
+                console.log(event.target)
                 if (event.target.parentElement == search_results) {
                     const id = event.target.id.split("_")[1]
-                    const claim = this.claims[id]
 
                     this.setFocusedClaim(id)
-                    
-                    search_span.textContent = claim.name
-                    this.updateSearch(claim.name)
+
+                    search_span.blur()
+                    search_span.textContent = ""
+
+                    this.updateSearch("")
                 } else if (event.target.parentElement.parentElement == search_results) {
-                    const id = event.target.id.split("_")[1]
-                    const claim = this.claims[id]
+                    const id = event.target.parentElement.id.split("_")[1]
 
                     this.setFocusedClaim(id)
                     
-                    search_span.textContent = claim.name
-                    this.updateSearch(claim.name)
+                    search_span.blur()
+                    search_span.textContent = ""
+                    
+                    this.updateSearch("")
                 }
             }
         })
@@ -976,6 +1020,8 @@ class WorldMap {
 
         window.addEventListener("mousedown", event => {
             if (event.target != this.app.canvas) return
+            if (event.button != 0) return
+
             mouseStartX = event.x
             mouseStartY = event.y
             dragging = true
@@ -999,6 +1045,7 @@ class WorldMap {
         })
 
         window.addEventListener("mouseup", event => {
+            if (event.button != 0) return
             dragging = false
 
             this.lazy_update = false
@@ -1073,6 +1120,10 @@ class WorldMap {
             this.lazy_update = false
 		})
 
+        context_menu.addEventListener("pointerleave", event => {
+            context_menu.style.display = "none"
+        })
+
         claim_deselect.addEventListener("click", event => {
             this.setFocusedClaim(undefined)
         })
@@ -1104,10 +1155,47 @@ class WorldMap {
 
                 claim_share.innerHTML = "Copied"
 
-                setTimeout(500, () => {
+                setTimeout(() => {
                     claim_share.innerHTML = prev_content
-                })
+                }, 500)
             }
+        })
+
+        context_copy.addEventListener("click", event => {
+            if (context_copy.innerText == "Copied") return
+            
+            const worldPos = this.toWorldSpace([this.pointer.x, this.pointer.y])
+            
+            const prev_content = context_copy.innerHTML
+
+            navigator.clipboard.writeText(`(${Math.floor(worldPos[0])}, ${Math.floor(worldPos[1])})`)
+
+            context_copy.innerHTML = "Copied"
+
+            setTimeout(() => {
+                context_copy.innerHTML = prev_content
+            }, 500)
+        })
+
+        context_copy_link.addEventListener("click", event => {
+            if (context_copy_link.innerText == "Copied") return
+            
+            const worldPos = this.toWorldSpace([this.pointer.x, this.pointer.y])
+            
+            const prev_content = context_copy_link.innerHTML
+
+             const url = new URL(window.location)
+            url.search = ""
+
+            url.searchParams.set("s", [...worldPos.map(Math.floor), 6].join("_"))
+
+            navigator.clipboard.writeText(url.toString())
+
+            context_copy_link.innerHTML = "Copied"
+
+            setTimeout(() => {
+                context_copy_link.innerHTML = prev_content
+            }, 500)
         })
 
         claim_panel.addEventListener('wheel', (e) => {

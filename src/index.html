@@ -10,7 +10,7 @@
     <script src="quadtree.min.js"></script>
     <script src="https://pixijs.download/release/pixi.min.js"></script>
 </head>
-<body>
+<body oncontextmenu="return false;">
     <div class="left_panel">
         <div class="data_panel panel">
             <span>Community Dynmap Reborn</span>
@@ -100,6 +100,13 @@
         <div class="search_bar panel">
             <span role="textbox" contenteditable id="search_span"></span>
         </div>
+    </div>
+
+    <div id="context_menu">
+        <ul>
+            <li id="context_copy">(1341, 3125)</li>
+            <li id="context_copy_link">Copy Link</li>
+        </ul>
     </div>
 
     <script src="collapsable.js"></script>
