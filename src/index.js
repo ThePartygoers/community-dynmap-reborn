@@ -959,10 +959,6 @@ class WorldMap {
                     event.preventDefault()
                 }
             }
-
-            if (this.hovered_claim) {
-                this.setFocusedClaim(this.hovered_claim)
-            }
             this.saveParams()
         })
 
@@ -972,7 +968,6 @@ class WorldMap {
             }
 
             if (event.target) {
-                console.log(event.target)
                 if (event.target.parentElement == search_results) {
                     const id = event.target.id.split("_")[1]
 
@@ -1022,6 +1017,10 @@ class WorldMap {
             if (event.target != this.app.canvas) return
             if (event.button != 0) return
 
+            if (this.hovered_claim) {
+                this.setFocusedClaim(this.hovered_claim)
+            }
+
             mouseStartX = event.x
             mouseStartY = event.y
             dragging = true
@@ -1060,6 +1059,9 @@ class WorldMap {
         let zooming = false
         let initial_zoom = 0
         let initial_touch_delta = 0
+
+        let last_touch = 0
+
         window.addEventListener("touchstart", event => {
             if (event.target != this.app.canvas) return
             this.pointer.onscreen = true
@@ -1074,6 +1076,13 @@ class WorldMap {
                 initial_touch_delta = Math.sqrt(
                     dx * dx + dy * dy
                 )
+            } else if (event.touches.length == 1) {
+                if (last_touch > Date.now() - 0.5) {
+                    if (this.hovered_claim) {
+                        this.setFocusedClaim(this.hovered_claim)
+                    }
+                }
+                last_touch = Date.now()
             }
 
             mouseStartX = event.touches[0].screenX
