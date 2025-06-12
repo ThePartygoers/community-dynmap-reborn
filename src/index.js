@@ -490,6 +490,20 @@ class WorldMap {
                         sprite.width = sizeOfTilePx
                         sprite.height = sizeOfTilePx
                         sprite.visible = true
+                            
+                        if (this.debug) {
+                            switch (lod) {
+                                case 0:
+                                    sprite.tint = 0xFF6666
+                                    break
+                                case 1:
+                                    sprite.tint = 0x66FF66
+                                    break
+                                case 2:
+                                    sprite.tint = 0x6666FF
+                                    break
+                            }
+                        }
                     } else {
                         sprite.visible = false
                     }
