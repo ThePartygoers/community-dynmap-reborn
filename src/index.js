@@ -49,7 +49,6 @@ class WorldMap {
         this.annotation_layer = new PIXI.Container({ isRenderGroup: true })
         this.annotation_layer.name = "Annotation"
 
-
         this.map_tile_sprite_pool = []
         this.children_cache = {}
 
@@ -95,6 +94,7 @@ class WorldMap {
 
         this.data_promise = undefined
 
+        this.loading_tickets = {}
         this.textures = {}
         
         this.annotations = []
@@ -112,7 +112,7 @@ class WorldMap {
         this.hovered_claim = undefined
         this.focused_claim = undefined
 
-        this.debug = false
+        this.debug = true
 
         this.setFocusedClaim(undefined)
     }
@@ -156,19 +156,17 @@ class WorldMap {
             sprite.visible = false
         })
 
-        const root_path = `static/maps/${id}`
         const depth = Math.floor(this.config.depth / 2)
 
-        for (let lod = this.config.lod - 1; lod > -1; lod--) {
+        // load first lod
+        for (let lod = this.config.lod - 1; lod >= this.config.lod - 1; lod--) {
             let promises = []
             let relative_depth = depth / Math.pow(2, lod)
 
             for (let x = -relative_depth; x <= relative_depth; x++) {
                 for (let z = -relative_depth; z <= relative_depth; z++) {
                     if (id == this.state.map) {
-                        promises.push(PIXI.Assets.load(`${root_path}/${lod}/${z}/${x}.png`).then(texture => {
-                            this.textures[`${lod}/${x}/${z}`] = texture
-                        }).catch(() => {}))
+                        promises.push(this.load_tile(id, lod, x, z))
                     }
                 }
             }
@@ -176,6 +174,20 @@ class WorldMap {
         }
 
         this.saveParams()
+    }
+
+    async load_tile(map, lod, x, z) {
+        const root_path = `static/maps/${map}`
+
+        this.loading_tickets[`${lod}/${z}/${x}`] = true
+
+        return await PIXI.Assets.load(`${root_path}/${lod}/${z}/${x}.png`).then(texture => {
+            if (map == this.state.map) {
+                this.textures[`${lod}/${x}/${z}`] = texture
+                this.textures.ttl = Date.now()
+            }
+            this.loading_tickets[`${lod}/${z}/${x}`] = undefined
+        }).catch(() => {})
     }
 
     async pullData() {
@@ -462,6 +474,8 @@ class WorldMap {
 
                     let children_drawn = this.children_cache[tile_id] || false
 
+                    children_drawn = true
+
                     if (lod > 0 && this._derived_lod < lod) {
                         const child_origin = this.toWorldSpace([0, 0])
                         child_origin[0] = Math.floor(child_origin[0] / sizeOfTileBlocks / 2)
@@ -482,16 +496,27 @@ class WorldMap {
                             this.children_cache[tile_id] = true
                         }
                     }
+                    
+                    if (tile_id in this.textures) {
+                        if (!children_drawn || this._derived_lod >= lod) {
+                            sprite.texture = this.textures[tile_id]
+                            sprite.texture.ttl = Date.now()
+                            sprite.x = screenSpace[0]
+                            sprite.y = screenSpace[1]
+                            sprite.width = sizeOfTilePx
+                            sprite.height = sizeOfTilePx
+                            sprite.visible = true
+                        } else {
+                            sprite.visible = false
 
-                    if (tile_id in this.textures && (!children_drawn || this._derived_lod >= lod)) {
-                        sprite.texture = this.textures[tile_id]
-                        sprite.x = screenSpace[0]
-                        sprite.y = screenSpace[1]
-                        sprite.width = sizeOfTilePx
-                        sprite.height = sizeOfTilePx
-                        sprite.visible = true
+                            if (this.config.texture_ttl !== -1 && sprite.texture.ttl < Date.now() - this.config.texture_ttl) {
+                                sprite.texture.destroy(true)
+                                this.textures[tile_id] = undefined
+                            }
+                        }
                     } else {
                         sprite.visible = false
+                        if (!(tile_id in this.loading_tickets)) this.load_tile(this.state.map, this._derived_lod, global_tile_x, global_tile_z)
                     }
                 }
             }
@@ -1489,6 +1514,7 @@ class WorldMap {
             const sprite = pool[i]
 
             sprite.visible = false
+            sprite.texture = this.textures["sample"]
         }
 
         return sprites
@@ -1531,7 +1557,8 @@ WorldMap.instance = new WorldMap({
     max_zoom: 50,
     search_preview: 10,
     initial_map: "bluemap",
-    block_selection_stroke: 16
+    block_selection_stroke: 16,
+    texture_ttl: undefined // i have no idea how this fixed it
 })
 await WorldMap.instance.init()
 globalThis.__PIXI_APP__ = WorldMap.instance.app
