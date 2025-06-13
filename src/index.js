@@ -1,4 +1,5 @@
 import { Annotations, RectangleAnnotation } from "./annotate.js"
+import { Handle } from "./handle.js"
 
 const x_input = document.getElementById("ui_x")
 const z_input = document.getElementById("ui_z")
@@ -26,6 +27,10 @@ const context_copy_link = document.getElementById("context_copy_link")
 
 function lerp(a, b, alpha) {
     return a + (b - a) * alpha
+}
+
+function manhattanDistance([x1, y1], [x2, y2]) {
+    return Math.abs(x1 - x2) + Math.abs(y1 - y2)
 }
 
 class WorldMap {
@@ -92,12 +97,17 @@ class WorldMap {
             map: undefined
         }
 
+        this.lazy_update_rect_selection = true
+        this.rect_selection = undefined
+
         this.data_promise = undefined
 
         this.loading_tickets = {}
         this.textures = {}
         
         this.annotations = []
+
+        this.handles = []
 
         this._last_candidates = new Set()
 
@@ -229,6 +239,11 @@ class WorldMap {
     }
 
     async init() {
+
+        if (window.matchMedia('(max-width: 480px)').matches)  {
+            document.body.style.setProperty("--dyn-search-text", "'Search by claim, nation or player'")
+        }
+
         await this.app.init()
 
         this.textures["sample"] = await PIXI.Assets.load("sample.png")
@@ -259,12 +274,17 @@ class WorldMap {
         this.claim_low_res.anchor.x = 0.5
         this.claim_low_res.anchor.y = 0.5
 
-        this.block_selection = new PIXI.Graphics()
-        this.block_selection.name = "Block Selection"
-        this.block_selection.zIndex = 3
-        this.block_selection.blendMode = "multiply"
+        this.block_selection_graphics = new PIXI.Graphics()
+        this.block_selection_graphics.name = "Block Selection"
+        this.block_selection_graphics.zIndex = 3
+        this.block_selection_graphics.blendMode = "multiply"
 
-        this.block_selection.moveTo(0, 0)
+        this.rect_selection_graphics = new PIXI.Graphics()
+        this.rect_selection_graphics.name = "Rect Selection"
+        this.rect_selection_graphics.zIndex = 3
+        this.rect_selection_graphics.blendMode = "multiply"
+
+        this.block_selection_graphics.moveTo(0, 0)
             .lineTo(this.config.block_selection_stroke, 0)
             .lineTo(this.config.block_selection_stroke, this.config.block_selection_stroke)
             .lineTo(0, this.config.block_selection_stroke)
@@ -301,9 +321,9 @@ class WorldMap {
         this.tooltip_text.zIndex = 10
 
         this.tooltip_text.style.addOverride('text-shadow: 2px 2px 4px rgba(0,0,0,0.5)');
-
-
         this.tooltip_containter.addChild(this.tooltip_text)
+
+        this.active_annotation = this.createAnnotations()
 
         let frametime_avg = 0
         let debug_lines = [
@@ -321,7 +341,9 @@ class WorldMap {
             () => `CLAIMS: [${this.stats.claims_rendered > 0 ? "HIGH" : "LOW" }] ${this.stats.claims_rendered}/${Object.keys(this.claims).length}`,
             () => `POINTER: ${this.pointer.onscreen} ${this.pointer.x} ${this.pointer.y} ${this.pointer.m1}`,
             () => `HOVER: C ${this.stats.candidates}/${this.stats.quadtree_content} H: ${this.hovered_claim}`,
-            () => `SEARCH: ${this.last_search.length} ${this.search_index}`
+            () => `SEARCH: ${this.last_search.length} ${this.search_index}`,
+            () => `SELECTION: ${this.lazy_update_rect_selection} ${this.rect_selection}`,
+            () => `HANDLES: ${this.held_handle} ${this.handles.length}`
         ]
 
         if (this.debug) {
@@ -352,11 +374,13 @@ class WorldMap {
         this.app.stage.addChild(this.claim_high_res_group)
         this.app.stage.addChild(this.claim_low_res)
         this.app.stage.addChild(this.grid_graphics)
-        this.app.stage.addChild(this.block_selection)
+        this.app.stage.addChild(this.block_selection_graphics)
+        this.app.stage.addChild(this.rect_selection_graphics)
         this.app.stage.addChild(this.block_hover)
         this.app.stage.addChild(this.tooltip_containter)
         this.app.stage.addChild(this.annotation_layer)
         this.app.stage.addChild(debug_container)
+    
         
         this.app.ticker.add((ticker) => {
             this.tick()
@@ -370,15 +394,6 @@ class WorldMap {
         })
 
         this.loadParams()
-
-        if (window.matchMedia('(max-width: 480px)').matches)  {
-            document.body.style.setProperty("--dyn-search-text", "'Search by claim, nation or player'")
-        }
-
-        // TEMP
-
-        const annotations = this.createAnnotations()
-        annotations.addAnnotation(new RectangleAnnotation([100, 100], [110, 110]))
     }
 
     createAnnotations() {
@@ -396,14 +411,15 @@ class WorldMap {
 
         this._derived_zoom = Math.pow(1.1, this.state.zoom)
 
+        
         const screenWidth = document.body.clientWidth
         const screenHeight = document.body.clientHeight
-
+        
         if (document.activeElement != x_input) x_input.value = Math.floor(this.state.x)
         if (document.activeElement != z_input) z_input.value = Math.floor(this.state.z)
-
+            
         this.app.renderer.resize(screenWidth, screenHeight)
-
+            
         this._derived_lod = Math.max(Math.min(this.config.lod - 1, Math.floor(Math.log2(1 / this._derived_zoom))), 0)
 
         let tiles = 0
@@ -520,7 +536,7 @@ class WorldMap {
                         }
                     } else {
                         sprite.visible = false
-                        if (!(tile_id in this.loading_tickets)) this.load_tile(this.state.map, this._derived_lod, global_tile_x, global_tile_z)
+                        this.load_tile(this.state.map, this._derived_lod, global_tile_x, global_tile_z)
                     }
                 }
             }
@@ -761,18 +777,55 @@ class WorldMap {
             if (this.state.selected_block) {
                 const selectedScreenPos = this.toScreenSpace([this.state.selected_block.x, this.state.selected_block.z])
                 
-                this.block_selection.x = selectedScreenPos[0]
-                this.block_selection.y = selectedScreenPos[1]
-                this.block_selection.scale = block_scale
+                this.block_selection_graphics.x = selectedScreenPos[0]
+                this.block_selection_graphics.y = selectedScreenPos[1]
+                this.block_selection_graphics.scale = block_scale
 
-                this.block_selection.visible = true
+                this.block_selection_graphics.visible = true
             } else {
-                this.block_selection.visible = false
+                this.block_selection_graphics.visible = false
+            }
+
+
+            if (this.rect_selection != undefined) {
+                const [x1, z1, x2, z2] = this.rect_selection
+
+                const blockWidth = x2 - x1 + 1
+                const blockHeight = z2 - z1 + 1
+
+                
+                if (!this.lazy_update_rect_selection) {
+                    this.rect_selection_graphics.clear()
+
+                    this.rect_selection_graphics.moveTo(0, 0)
+                        .lineTo(blockWidth * this.config.block_selection_stroke, 0)
+                        .lineTo(blockWidth * this.config.block_selection_stroke, blockHeight * this.config.block_selection_stroke)
+                        .lineTo(0, blockHeight * this.config.block_selection_stroke)
+                        .closePath()
+                        .stroke({ color: 0x777777, width: this.config.block_selection_stroke })
+
+
+                    this.lazy_update_rect_selection = true
+                }
+                
+                const [origin_x, origin_z] = this.toScreenSpace([x1, z1])
+                
+                this.rect_selection_graphics.x = origin_x + this._derived_zoom / 2
+                this.rect_selection_graphics.y = origin_z + this._derived_zoom / 2
+                this.rect_selection_graphics.width = blockWidth * this._derived_zoom
+                this.rect_selection_graphics.height = blockHeight * this._derived_zoom
+                
+                this.rect_selection_graphics.visible = true
+                
+            } else {
+                this.rect_selection_graphics.visible = false
             }
         } else {
-            this.block_selection.visible = false
+            this.block_selection_graphics.visible = false
             this.block_hover.visible = false
         }
+
+        this.handles.forEach(x => x.tick(screenWidth, screenHeight))
 
         this.stats.claims_rendered = claims_rendered
 
@@ -795,6 +848,18 @@ class WorldMap {
             return 1
         } else if (this.state.zoom >= 10) {
             return 16
+        }
+    }
+
+    getHoveredHandle(pointer_pos) {
+        for (let i = 0; i < this.handles.length; i++) {
+            const handle = this.handles[i]
+
+            const screen = this.toScreenSpace(handle.world_pos)
+
+            if (manhattanDistance(pointer_pos, screen) < Handle.HANDLE_SIZE) {
+                return handle
+            }
         }
     }
 
@@ -921,7 +986,7 @@ class WorldMap {
         })
 
         window.addEventListener("keydown", event => {
-            if (/^[a-zA-Z.]{1}$/.test(event.key) && search_span != document.activeElement) {
+            if (/^[a-zA-Z.]{1}$/.test(event.key) && search_span != document.activeElement && !(event.ctrlKey)) {
                 search_span.innerText = ""
                 search_span.focus()
             }
@@ -973,28 +1038,33 @@ class WorldMap {
         })
 
         let block_pos_down = [0, 0]
+        let screen_pos_down = [0, 0]
         window.addEventListener("pointerup", event => {
-            if (event.button == 2) {
-                const block_pos_up = this.toWorldSpace([event.clientX, event.clientY]).map(Math.floor)
-                if (block_pos_up[0] == block_pos_down[0] && block_pos_up[1] == block_pos_down[1]) {
-                    this.state.selected_block = {
-                        x: block_pos_down[0],
-                        z: block_pos_down[1]
-                    }
 
+            if (screen_pos_down[0] == event.clientX && screen_pos_down[1] == event.clientY && event.button == 0) {
+                this.state.selected_block = {
+                    x: block_pos_down[0],
+                    z: block_pos_down[1]
+                }
+            }
+
+            const block_pos_up = this.toWorldSpace([event.clientX, event.clientY]).map(Math.floor)
+
+            if (block_pos_up[0] == block_pos_down[0] && block_pos_up[1] == block_pos_down[1]) {
+                if (event.button == 2) {
                     context_menu.style.display = "block"
-                    context_menu.style.left = `${event.clientX + 2}px`
-                    context_menu.style.top = `${event.clientY + 2}px`
+                    context_menu.style.left = `${event.clientX - 2}px`
+                    context_menu.style.top = `${event.clientY - 16}px`
                     event.preventDefault()
                 }
             }
+
             this.saveParams()
         })
 
         window.addEventListener("pointerdown", event => {
-            if (event.button == 2) {
-                block_pos_down = this.toWorldSpace([event.clientX, event.clientY]).map(Math.floor)
-            }
+            block_pos_down = this.toWorldSpace([event.clientX, event.clientY]).map(Math.floor)
+            screen_pos_down = [event.clientX, event.clientY]
 
             if (event.target) {
                 if (event.target.parentElement == search_results) {
@@ -1042,25 +1112,58 @@ class WorldMap {
             this.pointer.onscreen = false
         })
 
+        let selecting = false
+        let selecting_block_pos_begin_x = 0
+        let selecting_block_pos_begin_z = 0
+
+        let handling = false
+
         window.addEventListener("mousedown", event => {
             if (event.target != this.app.canvas) return
-            if (event.button != 0) return
 
-            if (this.hovered_claim) {
-                this.setFocusedClaim(this.hovered_claim)
+            const [wx, wz] = this.toScreenSpace([
+                event.clientX,
+                event.clientY
+            ])
+
+            if (event.button == 0) {
+                const handle = this.getHoveredHandle([
+                    event.clientX,
+                    event.clientY
+                ])
+
+                if (handle) {
+
+                    this.held_handle = handle
+
+                    handling = true
+                } else if (this.hovered_claim != undefined) {
+                    this.setFocusedClaim(this.hovered_claim)
+                } else {
+                    mouseStartX = event.x
+                    mouseStartY = event.y
+                    dragging = true
+
+                    mapStartX = this.state.x
+                    mapStartY = this.state.z
+                }
+            } else if (event.button == 2) {
+                [selecting_block_pos_begin_x, selecting_block_pos_begin_z] = this.toWorldSpace([event.clientX, event.clientY]).map(Math.floor)
+                selecting = true
             }
-
-            mouseStartX = event.x
-            mouseStartY = event.y
-            dragging = true
-
-            mapStartX = this.state.x
-            mapStartY = this.state.z
 
             this.lazy_update = false
         })
 
         window.addEventListener("mousemove", event => {
+
+            this.hovered_handle = this.getHoveredHandle([
+                event.clientX,
+                event.clientY
+            ])
+
+            const [wx, wz] = this.toWorldSpace([event.clientX, event.clientY]).map(Math.round)
+
             if (dragging) {
                 const delta_x = (mouseStartX - event.x) / this._derived_zoom
                 const delta_y = (mouseStartY - event.y) / this._derived_zoom
@@ -1069,14 +1172,51 @@ class WorldMap {
                 this.state.z = mapStartY + delta_y
             }
 
+            if (handling) {
+                this.held_handle.update([wx, wz])
+            }
+
+            if (selecting) {
+
+                this.lazy_update_rect_selection = false
+                this.rect_selection = [
+                    Math.min(wx, selecting_block_pos_begin_x),
+                    Math.min(wz, selecting_block_pos_begin_z),
+                    Math.max(wx, selecting_block_pos_begin_x),
+                    Math.max(wz, selecting_block_pos_begin_z),
+                ]
+            }
+
             this.lazy_update = false
         })
 
         window.addEventListener("mouseup", event => {
-            if (event.button != 0) return
-            dragging = false
+            if (event.button == 0 && dragging) {
+                dragging = false
 
-            this.lazy_update = false
+                this.lazy_update = false
+            } else if (event.button == 0 && handling) {
+                handling = false
+            } else if (event.button == 2 && selecting) {
+                selecting = false
+
+                this.lazy_update_rect_selection = false
+                
+                if (this.active_annotation) {
+                    const [x1, z1, x2, z2] = this.rect_selection
+
+                    const annotation = new RectangleAnnotation([x1, z1], [x2 + 1, z2 + 1])
+
+                    this.active_annotation.addAnnotation(annotation)
+                    
+                    annotation.createHandles()
+
+                }
+
+                this.rect_selection = undefined
+                selecting_block_pos_begin_x = 0
+                selecting_block_pos_begin_z = 0
+            }
         })
 
         window.addEventListener("wheel", event => {
@@ -1092,10 +1232,10 @@ class WorldMap {
         let last_touch = 0
 
         window.addEventListener("touchstart", event => {
-            if (event.target != this.app.canvas) return
             this.pointer.onscreen = true
 
-            if (event.touches.length == 2) {
+
+            if (event.touches.length == 2 && event.target == this.app.canvas) {
                 zooming = true
                 initial_zoom = this.state.zoom
 
@@ -1106,22 +1246,27 @@ class WorldMap {
                     dx * dx + dy * dy
                 )
             } else if (event.touches.length == 1) {
-                if (last_touch > Date.now() - 0.5) {
+                if (last_touch > Date.now() - 300) {
                     if (this.hovered_claim) {
                         this.setFocusedClaim(this.hovered_claim)
+                        event.preventDefault()
                     }
                 }
                 last_touch = Date.now()
             }
 
-            mouseStartX = event.touches[0].screenX
-            mouseStartY = event.touches[0].screenY
-            dragging = true
+            if (event.target == this.app.canvas) {
+                mouseStartX = event.touches[0].screenX
+                mouseStartY = event.touches[0].screenY
+                dragging = true
 
-            mapStartX = this.state.x
-            mapStartY = this.state.z
+                mapStartX = this.state.x
+                mapStartY = this.state.z
 
-            this.lazy_update = false
+                this.lazy_update = false
+            }
+
+            
         })
 
         window.addEventListener("touchmove", event => {
@@ -1562,7 +1707,7 @@ WorldMap.instance = new WorldMap({
     search_preview: 10,
     initial_map: "bluemap",
     block_selection_stroke: 16,
-    texture_ttl: undefined // i have no idea how this fixed it
+    texture_ttl: 5000 // i have no idea how this fixed it
 })
 await WorldMap.instance.init()
 globalThis.__PIXI_APP__ = WorldMap.instance.app
