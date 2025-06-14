@@ -1,4 +1,4 @@
-import { Annotations, PolygonAnnotation, RectangleAnnotation } from "./annotate.js"
+import { Annotations, ContainerAnnotation, PolygonAnnotation, RectangleAnnotation, TextAnnotation } from "./annotate.js"
 import { Handle } from "./handle.js"
 
 const x_input = document.getElementById("ui_x")
@@ -22,8 +22,6 @@ const claim_share = document.getElementById("claim_share")
 const map_selector = document.getElementById("map_selector")
 
 const context_menu = document.getElementById("context_menu")
-const context_copy = document.getElementById("context_copy")
-const context_copy_link = document.getElementById("context_copy_link")
 
 function lerp(a, b, alpha) {
     return a + (b - a) * alpha
@@ -31,6 +29,15 @@ function lerp(a, b, alpha) {
 
 function manhattanDistance([x1, y1], [x2, y2]) {
     return Math.abs(x1 - x2) + Math.abs(y1 - y2)
+}
+
+function rectInside(inner, outer) {
+    return (
+        inner[0][0] >= outer[0][0] &&
+        inner[1][0] <= outer[1][0] &&
+        inner[0][1] >= outer[0][1] &&
+        inner[1][1] <= outer[1][1]
+    )
 }
 
 class WorldMap {
@@ -53,6 +60,7 @@ class WorldMap {
 
         this.annotation_layer = new PIXI.Container({ isRenderGroup: true })
         this.annotation_layer.name = "Annotation"
+        this.annotation_layer.zIndex = 12
 
         this.map_tile_sprite_pool = []
         this.children_cache = {}
@@ -403,20 +411,11 @@ class WorldMap {
 
         this.annotations.push(annotation)
 
-        let test = []
+        let text = new TextAnnotation([400, 400], "Hello World")
+        let text2 = new TextAnnotation([800, 800], "Hello World 2")
         
-        for (let i = 0; i < 20; i++) {
-            test.push([
-                Math.cos(i / 10 * Math.PI) * 100,
-                Math.sin(i / 10 * Math.PI) * 100,
-            ])
-        }
-
-        let poly = new PolygonAnnotation(test)
-        
-        annotation.addAnnotation(poly)
-
-        poly.createHandles()
+        annotation.addAnnotation(text)
+        annotation.addAnnotation(text2)
 
         return annotation
     }
@@ -425,7 +424,6 @@ class WorldMap {
         const perf_begin = performance.now()
 
         this._derived_zoom = Math.pow(1.1, this.state.zoom)
-
         
         const screenWidth = document.body.clientWidth
         const screenHeight = document.body.clientHeight
@@ -970,6 +968,124 @@ class WorldMap {
         }
     }
 
+    updateContextMenu() {
+        const [wx, wz] = this.toWorldSpace(
+            [this.pointer.x, this.pointer.y]
+        )
+
+        let items = [
+            { text: `${Math.floor(wx)},${Math.floor(wz)}`, click: li => {
+                if (li.innerText == "Copied") return
+                
+                const prev_content = li.innerHTML
+
+                navigator.clipboard.writeText(`(${Math.floor(wx)}, ${Math.floor(wz)})`)
+
+                li.innerHTML = "Copied"
+
+                setTimeout(() => {
+                    li.innerHTML = prev_content
+                }, 500)
+            } },
+            { text: `Copy Link`, click: li => {
+                if (li.innerText == "Copied") return
+                
+                const prev_content = li.innerHTML
+
+                const url = new URL(window.location)
+                url.search = ""
+
+                url.searchParams.set("s", [...[wx, wz].map(Math.floor), 6].join("_"))
+
+                navigator.clipboard.writeText(url.toString())
+
+                li.innerHTML = "Copied"
+
+                setTimeout(() => {
+                    li.innerHTML = prev_content
+                }, 500)
+            } },
+        ]
+
+        let text_annotations = 0
+        let selected_annotations = 0
+
+        this.annotations.forEach(annotation_holder => {
+            if (annotation_holder.getSelected().size > 0) {
+                selected_annotations += annotation_holder.getSelected().size
+
+                annotation_holder.getSelected().forEach(annotation => {
+                    if (annotation instanceof TextAnnotation) {
+                        text_annotations++;
+                    }
+                })
+            }
+        })
+
+        if (selected_annotations > 0) {
+            items.push({
+                text: `Delete ${selected_annotations}`,
+                click: li => {
+                    this.annotations.forEach(annotation_holder => {
+                        annotation_holder.getSelected().forEach(annotation => {
+                            annotation_holder.removeAnnotation(annotation.id)
+                        })
+                    })
+                }
+            })
+        }
+
+        if (text_annotations > 0) {
+            items.push({
+                text: `Edit ${text_annotations}`,
+                click: li => {
+                    console.log("begin editing")
+                    // TODO: implement
+                }
+            })
+        }
+
+        items.push({
+            text: `Add Text`,
+            click: li => {
+                let annotation = new TextAnnotation([wx, wz], "Text")
+
+                const annotation_holder = this.annotations[0]
+    
+                annotation_holder.addAnnotation(annotation)
+            }
+        })
+
+        items.push({
+            text: `Add Rect`,
+            click: li => {
+                let annotation = new RectangleAnnotation([wx, wz], [wx + 10, wz + 10])
+
+                const annotation_holder = this.annotations[0]
+    
+                annotation_holder.addAnnotation(annotation)
+            }
+        })
+
+        const ul = document.createElement("ul")
+
+        items.forEach(item => {
+            const li = document.createElement("li")
+
+            li.innerHTML = item.text
+
+            li.addEventListener("mousedown", () => {
+                item.click(li)
+
+                // context_menu.style.display = "none"
+            })
+            
+            ul.appendChild(li)
+        })
+
+        context_menu.replaceChildren(ul)
+    }
+
     registerEvents() {
         let mouseStartX = 0
         let mouseStartY = 0
@@ -1001,6 +1117,20 @@ class WorldMap {
         })
 
         window.addEventListener("keydown", event => {
+            if (event.key == "Escape") {
+                this.annotations.forEach(annotation_holder => {
+                    annotation_holder.clearSelected()
+                })
+            }
+
+            if (event.key == "Delete") {
+                this.annotations.forEach(annotation_holder => {
+                    annotation_holder.getSelected().forEach(annotation => {
+                        annotation_holder.removeAnnotation(annotation.id)
+                    })
+                })
+            }
+
             if (/^[a-zA-Z.]{1}$/.test(event.key) && search_span != document.activeElement && !(event.ctrlKey)) {
                 search_span.innerText = ""
                 search_span.focus()
@@ -1067,6 +1197,7 @@ class WorldMap {
 
             if (block_pos_up[0] == block_pos_down[0] && block_pos_up[1] == block_pos_down[1]) {
                 if (event.button == 2) {
+                    this.updateContextMenu()
                     context_menu.style.display = "block"
                     context_menu.style.left = `${event.clientX - 2}px`
                     context_menu.style.top = `${event.clientY - 16}px`
@@ -1142,6 +1273,7 @@ class WorldMap {
             ])
 
             if (event.button == 0) {
+
                 const handle = this.getHoveredHandle([
                     event.clientX,
                     event.clientY
@@ -1156,6 +1288,11 @@ class WorldMap {
                     if (this.hovered_claim != undefined) {
                         this.setFocusedClaim(this.hovered_claim)
                     }
+
+                    this.annotations.forEach(annotation_holder => {
+                        annotation_holder.clearSelected()
+                    })
+
                     mouseStartX = event.x
                     mouseStartY = event.y
                     dragging = true
@@ -1218,16 +1355,19 @@ class WorldMap {
 
                 this.lazy_update_rect_selection = false
                 
-                if (this.active_annotation) {
+                if (this.active_annotation && this.rect_selection) {
                     const [x1, z1, x2, z2] = this.rect_selection
 
-                    if (x2 - x1 < 2 && z2 - z1 < 2) {
-                        const annotation = new RectangleAnnotation([x1, z1], [x2 + 1, z2 + 1])
+                    this.annotations.forEach(annotation_holder => {
 
-                        this.active_annotation.addAnnotation(annotation)
+                        annotation_holder.clearSelected()
                         
-                        annotation.createHandles()
-                    }
+                        annotation_holder.getAnnotations().forEach(annotation => {
+                            if (rectInside(annotation.bounds, [[x1, z1], [x2, z2]])) {
+                                annotation_holder.addSelected(annotation)
+                            }
+                        })
+                    })
                 }
 
                 this.rect_selection = undefined
@@ -1361,42 +1501,6 @@ class WorldMap {
             }
         })
 
-        context_copy.addEventListener("click", event => {
-            if (context_copy.innerText == "Copied") return
-            
-            const worldPos = this.toWorldSpace([this.pointer.x, this.pointer.y])
-            
-            const prev_content = context_copy.innerHTML
-
-            navigator.clipboard.writeText(`(${Math.floor(worldPos[0])}, ${Math.floor(worldPos[1])})`)
-
-            context_copy.innerHTML = "Copied"
-
-            setTimeout(() => {
-                context_copy.innerHTML = prev_content
-            }, 500)
-        })
-
-        context_copy_link.addEventListener("click", event => {
-            if (context_copy_link.innerText == "Copied") return
-            
-            const worldPos = this.toWorldSpace([this.pointer.x, this.pointer.y])
-            
-            const prev_content = context_copy_link.innerHTML
-
-             const url = new URL(window.location)
-            url.search = ""
-
-            url.searchParams.set("s", [...worldPos.map(Math.floor), 6].join("_"))
-
-            navigator.clipboard.writeText(url.toString())
-
-            context_copy_link.innerHTML = "Copied"
-
-            setTimeout(() => {
-                context_copy_link.innerHTML = prev_content
-            }, 500)
-        })
 
         claim_panel.addEventListener('wheel', (e) => {
             const { scrollTop, scrollHeight, clientHeight } = claim_panel

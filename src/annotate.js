@@ -10,17 +10,96 @@ function isBoxOnscreen(box, screenWidth, screenHeight) {
     return true
 }
 
+function randomString(length) {
+    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+
+    let result = ""
+
+    for (let i = 0; i < length; i++) {
+        result += chars.charAt(Math.floor(Math.random() * chars.length))
+    }
+
+    return result
+}
+
 export class Annotation {
-    name = "Path"
+    name = "Annotation"
     bounds = undefined
+    handles = []
+
+    tick() {}
+
+    clearHandles() {
+        this.handles.forEach(handle => handle.destroy())
+        this.handles = []
+    }
+}
+
+export class ContainerAnnotation extends Annotation {
+    
+    static FIDELITY = 32
+
+    name = "Container"
+
+    container = undefined
+    world_pos = [0, 0]
+
+    createHandles() {
+        this.clearHandles()
+
+        const that = this
+
+        function updateHandles() {
+            that.handles[0].world_pos = that.world_pos
+        }
+
+        this.handles = [
+            new Handle(this.world_map, [ 0, 0 ], ([x, z]) => {
+                this.world_pos = [x, z]
+                this.bounds = [ this.world_pos, this.world_pos ]
+                updateHandles()
+            }),
+        ]
+
+        updateHandles()
+    }
+
+    constructor(worldPos) {
+        super()
+        this.world_pos = worldPos
+        this.container = new PIXI.Container()
+
+        this.bounds = [
+            this.world_pos,
+            this.world_pos
+        ]
+    }
+}
+
+export class TextAnnotation extends ContainerAnnotation {
+    constructor(worldPos, text) {
+        super(worldPos)
+
+        this.label = new PIXI.Text({
+            text: text,
+            style: {
+                fontFamily: 'Arial',
+                fontSize: 50,
+                fill: 0xFFFFFF,
+            }
+        })
+
+        this.container.addChild(this.label)
+    }
 }
 
 export class PathAnnotation extends Annotation {
+
+    name = "Path"
+
     path = undefined
 
     stale = false
-
-    handles = []
 }
 
 export class RectangleAnnotation extends PathAnnotation {
@@ -71,28 +150,28 @@ export class RectangleAnnotation extends PathAnnotation {
         }
 
         this.handles = [
-            new Handle(this.worldMap, [ 0, 0 ], ([x, z]) => {
+            new Handle(this.world_map, [ 0, 0 ], ([x, z]) => {
                 this.updatePath(
                     [x, z], 
                     this.bounds[1]
                 )
                 updateHandles()
             }),
-            new Handle(this.worldMap, [ 0, 0 ], ([x, z]) => {
+            new Handle(this.world_map, [ 0, 0 ], ([x, z]) => {
                 this.updatePath(
                     [this.bounds[0][0], z], 
                     [x, this.bounds[1][1]]
                 )
                 updateHandles()
             }),
-            new Handle(this.worldMap, [ 0, 0 ], ([x, z]) => {
+            new Handle(this.world_map, [ 0, 0 ], ([x, z]) => {
                 this.updatePath(
                     [x, this.bounds[0][1]], 
                     [this.bounds[1][0], z]
                 )
                 updateHandles()
             }),
-            new Handle(this.worldMap, [ 0, 0 ], ([x, z]) => {
+            new Handle(this.world_map, [ 0, 0 ], ([x, z]) => {
                 this.updatePath(
                     this.bounds[0],
                     [x, z]
@@ -141,7 +220,7 @@ export class PolygonAnnotation extends PathAnnotation {
     }
 
     createHandles() {
-        this.handles.forEach(handle => handle.cleanup)
+        this.clearHandles()
 
         const that = this
 
@@ -151,7 +230,7 @@ export class PolygonAnnotation extends PathAnnotation {
             })
         }
 
-        this.handles = this.points.map((point, index) => new Handle(this.worldMap, [ 0, 0 ], ([x, z]) => {
+        this.handles = this.points.map((point, index) => new Handle(this.world_map, [ 0, 0 ], ([x, z]) => {
             this.points[index] = [x, z]
             this.updatePath(
                 this.points
@@ -204,14 +283,20 @@ export class Annotations {
     derived_height = 0
     
     graphics = {}
+    containters = {}
+
+    selected = new Set()
 
     container = new PIXI.Container()
 
-    constructor(worldMap) {
-        this.worldMap = worldMap
+    constructor(world_map) {
+        this.world_map = world_map
     }
 
     #expandBounds([x, y]) {
+        if (!Number.isFinite(x)) return
+        if (!Number.isFinite(y)) return
+
         if (this.world_bounds == null) this.world_bounds = [[Number.MAX_VALUE, Number.MAX_VALUE], [-Number.MAX_VALUE, -Number.MAX_VALUE]]
 
         this.world_bounds[0][0] = Math.min(this.world_bounds[0][0], x)
@@ -224,66 +309,119 @@ export class Annotations {
     }
 
     addAnnotation(annotation) {
-        const id = crypto.randomUUID()
+        const id = randomString(32)
 
         this.#expandBounds(annotation.bounds[0])
         this.#expandBounds(annotation.bounds[1])
 
         this.annotations[id] = annotation
 
-        annotation.worldMap = this.worldMap
+        annotation.world_map = this.world_map
+        annotation.id = id
+        
+        if (annotation instanceof ContainerAnnotation) {
+            this.container.addChild(annotation.container)
+            this.containters[id] = annotation.container
+        }
 
         return id
+    }
+
+    removeAnnotation(id) {
+        this.annotations[id].clearHandles()
+
+        this.selected.delete(this.annotations[id])
+        delete this.annotations[id]
+        this.container.removeChild(this.containters[id])
+    }
+
+    getAnnotations() {
+        return Object.values(this.annotations)
+    }
+
+    addSelected(annotation) {
+        this.selected.add(annotation)
+        annotation.createHandles()
+    }
+
+    getSelected() {
+        return this.selected
+    }
+
+    clearSelected() {
+        this.selected.forEach(annotation => {
+            annotation.clearHandles()
+        })
+
+        this.selected.clear()
     }
 
     tick(screenWidth, screenHeight) {
         if (this.world_bounds == null) return
 
-        const screenBounds = this.world_bounds.map(pos => this.worldMap.toScreenSpace(pos))
+        const screenBounds = this.world_bounds.map(pos => this.world_map.toScreenSpace(pos))
 
-        if (isBoxOnscreen(screenBounds, screenWidth, screenHeight)) {
-            const world_origin_screen = this.worldMap.toScreenSpace([0, 0]) // TODO: cascade this down?
+        if (isBoxOnscreen(screenBounds, screenWidth, screenHeight) || true) {
+            const world_origin_screen = this.world_map.toScreenSpace([0, 0]) // TODO: cascade this down?
 
             for (const [id, annotation] of Object.entries(this.annotations)) {
+                if (!isBoxOnscreen(
+                    annotation.bounds.map(pos => this.world_map.toScreenSpace(pos)),
+                    screenWidth,
+                    screenHeight
+                )) continue
 
-                // if (!isBoxOnscreen(annotation.bounds.map(pos => this.worldMap.toScreenSpace(pos)), screenWidth, screenHeight)) {
-                //     continue
-                // }
+                if (annotation instanceof PathAnnotation) {
+                    let graphic = this.graphics[id]
 
-                let graphic = this.graphics[id]
 
-                if (graphic == undefined) {
-                    graphic = new PIXI.Graphics()
-                    this.container.addChild(graphic)
+                    if (graphic == undefined) {
+                        graphic = new PIXI.Graphics()
+                        this.container.addChild(graphic)
+                    }
+
+                    if (annotation.stale) {
+                        graphic.clear()
+
+                        const drawn_path = annotation.path.clone(true)
+
+                        // | a | c | tx|
+                        // | b | d | ty|
+                        // | 0 | 0 | 1 |
+                        // Matrix(a, b, c, d, tx, ty)
+                        
+                        drawn_path.transform(new PIXI.Matrix(this.resolution, 0, 0, this.resolution, 0, 0))
+
+                        graphic.path(drawn_path)
+                        graphic.stroke({ color: 0xFFFFFF, width: 8 })
+                        graphic.scale = 1 / this.resolution
+
+                        this.graphics[id] = graphic
+                    }
+
+                    graphic.x = world_origin_screen[0]
+                    graphic.y = world_origin_screen[1]
+                    graphic.scale = 1 / this.resolution *  this.world_map._derived_zoom
+                    graphic.visible = true
+                } else if (annotation instanceof ContainerAnnotation) {
+                    const [x, y] = this.world_map.toScreenSpace(annotation.world_pos)
+
+                    annotation.container.x = x
+                    annotation.container.y = y
+                    annotation.container.visible = true
+
+                    annotation.container.scale = this.world_map._derived_zoom / annotation.constructor.FIDELITY
+
+                    annotation.tick()
                 }
-
-                if (annotation.stale) {
-                    graphic.clear()
-
-                    const drawn_path = annotation.path.clone(true)
-
-                    // | a | c | tx|
-                    // | b | d | ty|
-                    // | 0 | 0 | 1 |
-                    // Matrix(a, b, c, d, tx, ty)
-                    
-                    drawn_path.transform(new PIXI.Matrix(this.resolution, 0, 0, this.resolution, 0, 0))
-
-                    graphic.path(drawn_path)
-                    graphic.stroke({ color: 0xFFFFFF, width: 8 })
-                    graphic.scale = 1 / this.resolution
-
-                    this.graphics[id] = graphic
-                }
-
-                graphic.x = world_origin_screen[0]
-                graphic.y = world_origin_screen[1]
-                graphic.scale = 1 / this.resolution *  this.worldMap._derived_zoom
-                graphic.visible = true
             }
         } else {
             for (const [_, graphic] of Object.entries(this.graphics)) {
                 graphic.visible = false
+            }
+
+            for (const [_, container] of Object.entries(this.containters)) {
+                container.visible = false
             }
         }
     }

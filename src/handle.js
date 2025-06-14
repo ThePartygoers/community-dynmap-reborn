@@ -23,7 +23,7 @@ export class Handle {
         this.root = new PIXI.Container()
         this.root.name = "Handle"
 
-        this.root.zIndex = 10
+        this.root.zIndex = 20
 
         this.bounds = bounds
 
