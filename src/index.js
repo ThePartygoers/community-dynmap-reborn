@@ -1107,7 +1107,7 @@ class WorldMap {
         z_input.addEventListener("input", event => {
             const z = parseInt(z_input.value)
             if (z) {
-                this.state.x = z
+                this.state.z = z
                 this.lazy_update = false
             }
         })
