@@ -9,11 +9,14 @@ function isBoxOnscreen(box, screenWidth, screenHeight) {
 
     return true
 }
-export class PathAnnotation {
-    name = "Path"
 
-    path = undefined
+export class Annotation {
+    name = "Path"
     bounds = undefined
+}
+
+export class PathAnnotation extends Annotation {
+    path = undefined
 
     stale = false
 
@@ -129,44 +132,61 @@ export class PolygonAnnotation extends PathAnnotation {
 
     name = "Polygon"
 
-    path = undefined
-    bounds = undefined
+    points = []
 
-    stale = false
-
-    constructor([x1, y1], [x2, y2]) {
+    constructor(points) {
         super()
-        this.updatePath([x1, y1], [x2, y2])
+        this.points = points
+        this.updatePath(points)
     }
 
-    #expandBounds([x, y]) {
-        if (this.bounds == null) this.bounds = [[9e9, 9e9], [-9e9, -9e9]]
+    createHandles() {
+        this.handles.forEach(handle => handle.cleanup)
 
-        this.bounds[0][0] = Math.min(this.bounds[0][0], x)
-        this.bounds[0][1] = Math.min(this.bounds[0][1], y)
-        this.bounds[1][0] = Math.max(this.bounds[1][0], x)
-        this.bounds[1][1] = Math.max(this.bounds[1][1], y)
+        const that = this
+
+        function updateHandles(handle) {
+            that.handles.forEach((handle, index) => {
+                handle.world_pos = that.points[index]
+            })
+        }
+
+        this.handles = this.points.map((point, index) => new Handle(this.worldMap, [ 0, 0 ], ([x, z]) => {
+            this.points[index] = [x, z]
+            this.updatePath(
+                this.points
+            )
+            updateHandles()
+        }))
+
+        updateHandles()
     }
 
-    updatePath([x1, y1], [x2, y2]) {
+    updatePath(points) {
+        if (points.length < 3) return
+
         this.path = new PIXI.GraphicsPath()
-            .moveTo(x1, y1)
-            .lineTo(x2, y1)
-            .lineTo(x2, y2)
-            .lineTo(x1, y2)
-            .closePath()
 
-        this.#expandBounds([
-            this.path.shapePath.bounds.left,
-            this.path.shapePath.bounds.top,
-        ])
+        this.path.moveTo(points[0][0], points[0][1])
 
-        this.#expandBounds([
-            this.path.shapePath.bounds.right,
-            this.path.shapePath.bounds.bottom,
-        ])
+        for (let i = 1; i < points.length; i++) {
+            const [x, y] = points[i]
 
-        console.log(this.bounds)
+            this.path.lineTo(x, y)
+        }
+
+        this.path.closePath()
+
+        this.bounds = [
+            [
+                this.path.shapePath.bounds.left,
+                this.path.shapePath.bounds.top
+            ],
+            [
+                this.path.shapePath.bounds.right,
+                this.path.shapePath.bounds.bottom
+            ]
+        ]
 
         this.stale = true
     }

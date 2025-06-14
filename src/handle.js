@@ -23,6 +23,8 @@ export class Handle {
         this.root = new PIXI.Container()
         this.root.name = "Handle"
 
+        this.root.zIndex = 10
+
         this.bounds = bounds
 
         this.handle = new PIXI.Graphics()
@@ -88,8 +90,8 @@ export class Handle {
     }
 
     destroy() {
-        this.container.destroy({ children: true })
+        this.root.destroy({ children: true })
         this.worldMap.app.stage.removeChild(this.root)
-        this.worldMap.handles.remove(this)
+        this.worldMap.handles.splice(this.worldMap.handles.indexOf(this), 1)
     }
 }

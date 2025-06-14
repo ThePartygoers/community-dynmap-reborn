@@ -1,4 +1,4 @@
-import { Annotations, RectangleAnnotation } from "./annotate.js"
+import { Annotations, PolygonAnnotation, RectangleAnnotation } from "./annotate.js"
 import { Handle } from "./handle.js"
 
 const x_input = document.getElementById("ui_x")
@@ -343,7 +343,7 @@ class WorldMap {
             () => `HOVER: C ${this.stats.candidates}/${this.stats.quadtree_content} H: ${this.hovered_claim}`,
             () => `SEARCH: ${this.last_search.length} ${this.search_index}`,
             () => `SELECTION: ${this.lazy_update_rect_selection} ${this.rect_selection}`,
-            () => `HANDLES: ${this.held_handle} ${this.handles.length}`
+            () => `HANDLES: ${this.hovered_handle} ${this.held_handle} ${this.handles.length}`
         ]
 
         if (this.debug) {
@@ -402,6 +402,21 @@ class WorldMap {
         this.annotation_layer.addChild(annotation.container)
 
         this.annotations.push(annotation)
+
+        let test = []
+        
+        for (let i = 0; i < 20; i++) {
+            test.push([
+                Math.cos(i / 10 * Math.PI) * 100,
+                Math.sin(i / 10 * Math.PI) * 100,
+            ])
+        }
+
+        let poly = new PolygonAnnotation(test)
+        
+        annotation.addAnnotation(poly)
+
+        poly.createHandles()
 
         return annotation
     }
@@ -1137,9 +1152,10 @@ class WorldMap {
                     this.held_handle = handle
 
                     handling = true
-                } else if (this.hovered_claim != undefined) {
-                    this.setFocusedClaim(this.hovered_claim)
                 } else {
+                    if (this.hovered_claim != undefined) {
+                        this.setFocusedClaim(this.hovered_claim)
+                    }
                     mouseStartX = event.x
                     mouseStartY = event.y
                     dragging = true
@@ -1205,12 +1221,13 @@ class WorldMap {
                 if (this.active_annotation) {
                     const [x1, z1, x2, z2] = this.rect_selection
 
-                    const annotation = new RectangleAnnotation([x1, z1], [x2 + 1, z2 + 1])
+                    if (x2 - x1 < 2 && z2 - z1 < 2) {
+                        const annotation = new RectangleAnnotation([x1, z1], [x2 + 1, z2 + 1])
 
-                    this.active_annotation.addAnnotation(annotation)
-                    
-                    annotation.createHandles()
-
+                        this.active_annotation.addAnnotation(annotation)
+                        
+                        annotation.createHandles()
+                    }
                 }
 
                 this.rect_selection = undefined
