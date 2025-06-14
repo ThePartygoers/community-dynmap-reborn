@@ -122,7 +122,7 @@ class WorldMap {
         this.hovered_claim = undefined
         this.focused_claim = undefined
 
-        this.debug = true
+        this.debug = false
 
         this.setFocusedClaim(undefined)
     }
